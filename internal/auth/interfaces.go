@@ -19,6 +19,14 @@ type UserRepositoryInterface interface {
 	GetPasswordResetToken(ctx context.Context, token string) (*PasswordResetToken, error)
 	MarkPasswordResetTokenUsed(ctx context.Context, tokenID string) error
 	CleanupExpiredPasswordResetTokens(ctx context.Context) error
+
+	// OTP operations
+	CreateOTP(ctx context.Context, otp *OTP) error
+	GetOTP(ctx context.Context, recipient string, otpType OTPType, code string) (*OTP, error)
+	GetLatestOTP(ctx context.Context, recipient string, otpType OTPType) (*OTP, error)
+	MarkOTPUsed(ctx context.Context, otpID string) error
+	IncrementOTPAttempts(ctx context.Context, otpID string) error
+	CleanupExpiredOTPs(ctx context.Context) error
 }
 
 // PasswordHasherInterface defines the contract for password hashing operations
@@ -35,6 +43,8 @@ type ValidatorInterface interface {
 	ValidateLoginRequest(req *LoginRequest) error
 	ValidatePasswordResetRequest(req *PasswordResetRequest) error
 	ValidatePasswordResetConfirmRequest(req *PasswordResetConfirmRequest) error
+	ValidateOTPRequest(req *OTPRequest) error
+	ValidateVerifyOTPRequest(req *VerifyOTPRequest) error
 	ValidateEmail(email string) error
 	ValidatePhone(phone string) error
 	ValidateUsername(username string) error
@@ -59,4 +69,9 @@ type AuthServiceInterface interface {
 	VerifyPhone(ctx context.Context, id string) error
 	RequestPasswordReset(ctx context.Context, req *PasswordResetRequest) error
 	ConfirmPasswordReset(ctx context.Context, req *PasswordResetConfirmRequest) error
+
+	// OTP operations
+	SendOTP(ctx context.Context, req *OTPRequest) error
+	VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, error)
+	LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*AuthResponse, error)
 }

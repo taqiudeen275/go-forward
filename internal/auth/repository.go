@@ -586,3 +586,140 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, id string, hashedPa
 
 	return nil
 }
+
+// CreateOTP creates a new OTP in the database
+func (r *UserRepository) CreateOTP(ctx context.Context, otp *OTP) error {
+	query := `
+		INSERT INTO otps (id, user_id, code, type, recipient, expires_at, used, attempts, max_attempts, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+
+	err := r.db.Exec(ctx, query,
+		otp.ID,
+		otp.UserID,
+		otp.Code,
+		string(otp.Type),
+		otp.Recipient,
+		otp.ExpiresAt,
+		otp.Used,
+		otp.Attempts,
+		otp.MaxAttempts,
+		otp.CreatedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to create OTP: %w", err)
+	}
+
+	return nil
+}
+
+// GetOTP retrieves an OTP by recipient, type, and code
+func (r *UserRepository) GetOTP(ctx context.Context, recipient string, otpType OTPType, code string) (*OTP, error) {
+	query := `
+		SELECT id, user_id, code, type, recipient, expires_at, used, attempts, max_attempts, created_at
+		FROM otps
+		WHERE recipient = $1 AND type = $2 AND code = $3 AND used = false
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	otp := &OTP{}
+	var otpTypeStr string
+
+	err := r.db.QueryRow(ctx, query, recipient, string(otpType), code).Scan(
+		&otp.ID,
+		&otp.UserID,
+		&otp.Code,
+		&otpTypeStr,
+		&otp.Recipient,
+		&otp.ExpiresAt,
+		&otp.Used,
+		&otp.Attempts,
+		&otp.MaxAttempts,
+		&otp.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("OTP not found")
+		}
+		return nil, fmt.Errorf("failed to get OTP: %w", err)
+	}
+
+	otp.Type = OTPType(otpTypeStr)
+	return otp, nil
+}
+
+// GetLatestOTP retrieves the latest OTP for a recipient and type
+func (r *UserRepository) GetLatestOTP(ctx context.Context, recipient string, otpType OTPType) (*OTP, error) {
+	query := `
+		SELECT id, user_id, code, type, recipient, expires_at, used, attempts, max_attempts, created_at
+		FROM otps
+		WHERE recipient = $1 AND type = $2
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	otp := &OTP{}
+	var otpTypeStr string
+
+	err := r.db.QueryRow(ctx, query, recipient, string(otpType)).Scan(
+		&otp.ID,
+		&otp.UserID,
+		&otp.Code,
+		&otpTypeStr,
+		&otp.Recipient,
+		&otp.ExpiresAt,
+		&otp.Used,
+		&otp.Attempts,
+		&otp.MaxAttempts,
+		&otp.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("OTP not found")
+		}
+		return nil, fmt.Errorf("failed to get latest OTP: %w", err)
+	}
+
+	otp.Type = OTPType(otpTypeStr)
+	return otp, nil
+}
+
+// MarkOTPUsed marks an OTP as used
+func (r *UserRepository) MarkOTPUsed(ctx context.Context, otpID string) error {
+	query := `UPDATE otps SET used = true WHERE id = $1`
+
+	err := r.db.Exec(ctx, query, otpID)
+	if err != nil {
+		return fmt.Errorf("failed to mark OTP as used: %w", err)
+	}
+
+	return nil
+}
+
+// IncrementOTPAttempts increments the attempt count for an OTP
+func (r *UserRepository) IncrementOTPAttempts(ctx context.Context, otpID string) error {
+	query := `UPDATE otps SET attempts = attempts + 1 WHERE id = $1`
+
+	err := r.db.Exec(ctx, query, otpID)
+	if err != nil {
+		return fmt.Errorf("failed to increment OTP attempts: %w", err)
+	}
+
+	return nil
+}
+
+// CleanupExpiredOTPs removes expired OTPs
+func (r *UserRepository) CleanupExpiredOTPs(ctx context.Context) error {
+	query := `DELETE FROM otps WHERE expires_at < NOW() OR used = true`
+
+	err := r.db.Exec(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup expired OTPs: %w", err)
+	}
+
+	return nil
+}

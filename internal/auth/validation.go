@@ -254,3 +254,72 @@ func (v *Validator) ValidatePasswordResetConfirmRequest(req *PasswordResetConfir
 
 	return nil
 }
+
+// ValidateOTPRequest validates an OTP request
+func (v *Validator) ValidateOTPRequest(req *OTPRequest) error {
+	if req == nil {
+		return fmt.Errorf("request cannot be nil")
+	}
+
+	// Validate OTP type
+	if req.Type != OTPTypeEmail && req.Type != OTPTypeSMS {
+		return fmt.Errorf("invalid OTP type: must be 'email' or 'sms'")
+	}
+
+	// Validate recipient based on type
+	if strings.TrimSpace(req.Recipient) == "" {
+		return fmt.Errorf("recipient cannot be empty")
+	}
+
+	if req.Type == OTPTypeEmail {
+		if err := v.ValidateEmail(req.Recipient); err != nil {
+			return fmt.Errorf("invalid email recipient: %w", err)
+		}
+	} else if req.Type == OTPTypeSMS {
+		if err := v.ValidatePhone(req.Recipient); err != nil {
+			return fmt.Errorf("invalid phone recipient: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ValidateVerifyOTPRequest validates a verify OTP request
+func (v *Validator) ValidateVerifyOTPRequest(req *VerifyOTPRequest) error {
+	if req == nil {
+		return fmt.Errorf("request cannot be nil")
+	}
+
+	// Validate OTP type
+	if req.Type != OTPTypeEmail && req.Type != OTPTypeSMS {
+		return fmt.Errorf("invalid OTP type: must be 'email' or 'sms'")
+	}
+
+	// Validate recipient based on type
+	if strings.TrimSpace(req.Recipient) == "" {
+		return fmt.Errorf("recipient cannot be empty")
+	}
+
+	if req.Type == OTPTypeEmail {
+		if err := v.ValidateEmail(req.Recipient); err != nil {
+			return fmt.Errorf("invalid email recipient: %w", err)
+		}
+	} else if req.Type == OTPTypeSMS {
+		if err := v.ValidatePhone(req.Recipient); err != nil {
+			return fmt.Errorf("invalid phone recipient: %w", err)
+		}
+	}
+
+	// Validate OTP code
+	if strings.TrimSpace(req.Code) == "" {
+		return fmt.Errorf("OTP code cannot be empty")
+	}
+
+	// Check if code is exactly 6 digits
+	codeRegex := regexp.MustCompile(`^\d{6}$`)
+	if !codeRegex.MatchString(req.Code) {
+		return fmt.Errorf("OTP code must be exactly 6 digits")
+	}
+
+	return nil
+}

@@ -114,6 +114,43 @@ func (m *MockUserRepository) CleanupExpiredPasswordResetTokens(ctx context.Conte
 	return args.Error(0)
 }
 
+// OTP methods
+func (m *MockUserRepository) CreateOTP(ctx context.Context, otp *OTP) error {
+	args := m.Called(ctx, otp)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) GetOTP(ctx context.Context, recipient string, otpType OTPType, code string) (*OTP, error) {
+	args := m.Called(ctx, recipient, otpType, code)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*OTP), args.Error(1)
+}
+
+func (m *MockUserRepository) GetLatestOTP(ctx context.Context, recipient string, otpType OTPType) (*OTP, error) {
+	args := m.Called(ctx, recipient, otpType)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*OTP), args.Error(1)
+}
+
+func (m *MockUserRepository) MarkOTPUsed(ctx context.Context, otpID string) error {
+	args := m.Called(ctx, otpID)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) IncrementOTPAttempts(ctx context.Context, otpID string) error {
+	args := m.Called(ctx, otpID)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) CleanupExpiredOTPs(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 // createTestService creates a service with mocked dependencies for testing
 func createTestService() (*Service, *MockUserRepository) {
 	mockRepo := &MockUserRepository{}

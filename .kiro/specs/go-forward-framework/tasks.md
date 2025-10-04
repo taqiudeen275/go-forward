@@ -68,21 +68,32 @@
     - Test password hashing and validation
     - _Requirements: 1.3, 1.4, 1.6, 1.7_
 
-- [ ] 4. Implement OTP authentication system
-  - [ ] 4.1 Create OTP generation and storage
+- [x] 4. Implement OTP authentication system
+
+
+
+
+
+  - [x] 4.1 Create OTP generation and storage
+
+
     - Implement OTP generation with configurable expiration
     - Create OTP storage in database with cleanup mechanism
     - Add OTP validation logic
     - _Requirements: 1.1, 1.2_
 
-  - [ ] 4.2 Add email OTP delivery
+  - [x] 4.2 Add email OTP delivery
+
+
     - Integrate SMTP client for email sending
     - Create email templates for OTP messages
     - Implement email OTP sending endpoint
     - _Requirements: 1.1_
 
-  - [ ] 4.3 Add SMS OTP delivery
-    - Integrate SMS provider (Twilio or similar)
+
+
+  - [x] 4.3 Add SMS OTP delivery
+    - Integrate SMS provider (Arkesel)
     - Implement SMS OTP sending endpoint
     - Add phone number validation
     - _Requirements: 1.2_

@@ -8,14 +8,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/taqiudeen275/go-foward/internal/database"
+	"github.com/taqiudeen275/go-foward/internal/email"
+	"github.com/taqiudeen275/go-foward/internal/sms"
 )
 
 // Service handles authentication business logic
 type Service struct {
-	repo       UserRepositoryInterface
-	hasher     *PasswordHasher
-	validator  *Validator
-	jwtManager *JWTManager
+	repo         UserRepositoryInterface
+	hasher       *PasswordHasher
+	validator    *Validator
+	jwtManager   *JWTManager
+	emailService email.EmailService
+	smsService   sms.SMSService
 }
 
 // NewService creates a new authentication service
@@ -24,10 +28,12 @@ func NewService(db *database.DB) *Service {
 	jwtManager := NewJWTManager("default-secret-key", 24*time.Hour, 7*24*time.Hour)
 
 	return &Service{
-		repo:       NewUserRepository(db),
-		hasher:     NewPasswordHasher(),
-		validator:  NewValidator(),
-		jwtManager: jwtManager,
+		repo:         NewUserRepository(db),
+		hasher:       NewPasswordHasher(),
+		validator:    NewValidator(),
+		jwtManager:   jwtManager,
+		emailService: nil, // Will be set via SetEmailService
+		smsService:   nil, // Will be set via SetSMSService
 	}
 }
 
@@ -36,11 +42,33 @@ func NewServiceWithConfig(db *database.DB, jwtSecret string, accessExpiration, r
 	jwtManager := NewJWTManager(jwtSecret, accessExpiration, refreshExpiration)
 
 	return &Service{
-		repo:       NewUserRepository(db),
-		hasher:     NewPasswordHasher(),
-		validator:  NewValidator(),
-		jwtManager: jwtManager,
+		repo:         NewUserRepository(db),
+		hasher:       NewPasswordHasher(),
+		validator:    NewValidator(),
+		jwtManager:   jwtManager,
+		emailService: nil, // Will be set via SetEmailService
+		smsService:   nil, // Will be set via SetSMSService
 	}
+}
+
+// SetEmailService sets the email service for the auth service
+func (s *Service) SetEmailService(emailService email.EmailService) {
+	s.emailService = emailService
+}
+
+// SetSMSService sets the SMS service for the auth service
+func (s *Service) SetSMSService(smsService sms.SMSService) {
+	s.smsService = smsService
+}
+
+// GetEmailService returns the email service
+func (s *Service) GetEmailService() email.EmailService {
+	return s.emailService
+}
+
+// GetSMSService returns the SMS service
+func (s *Service) GetSMSService() sms.SMSService {
+	return s.smsService
 }
 
 // CreateUser creates a new user with hashed password
@@ -374,9 +402,16 @@ func (s *Service) RequestPasswordReset(ctx context.Context, req *PasswordResetRe
 		return fmt.Errorf("failed to create password reset token: %w", err)
 	}
 
-	// TODO: Send email/SMS with reset token
-	// For now, we'll just log it (in production, this should send an email/SMS)
-	fmt.Printf("Password reset token for user %s: %s\n", user.ID, resetToken.Token)
+	// Send password reset email
+	if s.emailService != nil && user.Email != nil {
+		err = s.emailService.SendPasswordReset(ctx, *user.Email, resetToken.Token, "Go Forward")
+		if err != nil {
+			return fmt.Errorf("failed to send password reset email: %w", err)
+		}
+	} else {
+		// Fallback: log the token if email service is not configured
+		fmt.Printf("Password reset token for user %s: %s (email service not configured)\n", user.ID, resetToken.Token)
+	}
 
 	return nil
 }
@@ -414,4 +449,145 @@ func generateSecureToken() string {
 	// Generate a random UUID and remove hyphens for simplicity
 	token := uuid.New().String()
 	return strings.ReplaceAll(token, "-", "")
+}
+
+// SendOTP generates and sends an OTP to the specified recipient
+func (s *Service) SendOTP(ctx context.Context, req *OTPRequest) error {
+	// Validate request
+	if err := s.validator.ValidateOTPRequest(req); err != nil {
+		return err
+	}
+
+	// Create OTP generator with config-based expiration
+	otpGenerator := NewOTPGeneratorWithConfig(6, 10*time.Minute, 3)
+
+	// Check if user exists for the recipient
+	var userID *string
+	user, err := s.GetUserByIdentifier(ctx, req.Recipient)
+	if err == nil {
+		userID = &user.ID
+	}
+	// If user doesn't exist, userID remains nil (for registration OTPs)
+
+	// Generate OTP
+	otp, err := otpGenerator.CreateOTP(userID, req.Type, req.Recipient)
+	if err != nil {
+		return fmt.Errorf("failed to generate OTP: %w", err)
+	}
+
+	// Save OTP to database
+	err = s.repo.CreateOTP(ctx, otp)
+	if err != nil {
+		return fmt.Errorf("failed to save OTP: %w", err)
+	}
+
+	// Send OTP via email or SMS
+	if req.Type == OTPTypeEmail {
+		if s.emailService != nil {
+			err = s.emailService.SendOTP(ctx, req.Recipient, otp.Code, "Go Forward")
+			if err != nil {
+				return fmt.Errorf("failed to send OTP email: %w", err)
+			}
+		} else {
+			// Fallback: log the OTP if email service is not configured
+			fmt.Printf("Email OTP for %s: %s (email service not configured)\n", req.Recipient, otp.Code)
+		}
+	} else if req.Type == OTPTypeSMS {
+		if s.smsService != nil {
+			err = s.smsService.SendOTP(ctx, req.Recipient, otp.Code, "Go Forward")
+			if err != nil {
+				return fmt.Errorf("failed to send OTP SMS: %w", err)
+			}
+		} else {
+			// Fallback: log the OTP if SMS service is not configured
+			fmt.Printf("SMS OTP for %s: %s (SMS service not configured)\n", req.Recipient, otp.Code)
+		}
+	}
+
+	return nil
+}
+
+// VerifyOTP verifies an OTP code and returns the associated user if found
+func (s *Service) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, error) {
+	// Validate request
+	if err := s.validator.ValidateVerifyOTPRequest(req); err != nil {
+		return nil, err
+	}
+
+	// Get the latest OTP for this recipient and type
+	otp, err := s.repo.GetLatestOTP(ctx, req.Recipient, req.Type)
+	if err != nil {
+		return nil, fmt.Errorf("invalid or expired OTP")
+	}
+
+	// Increment attempts first
+	err = s.repo.IncrementOTPAttempts(ctx, otp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update OTP attempts: %w", err)
+	}
+
+	// Create OTP generator for validation
+	otpGenerator := NewOTPGeneratorWithConfig(6, 10*time.Minute, 3)
+
+	// Validate the OTP code
+	err = otpGenerator.ValidateCode(otp, req.Code)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mark OTP as used
+	err = s.repo.MarkOTPUsed(ctx, otp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mark OTP as used: %w", err)
+	}
+
+	// If OTP has a user ID, return the user
+	if otp.UserID != nil {
+		user, err := s.GetUserByID(ctx, *otp.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("user not found: %w", err)
+		}
+
+		// Mark the appropriate field as verified
+		if req.Type == OTPTypeEmail {
+			err = s.VerifyEmail(ctx, user.ID)
+		} else if req.Type == OTPTypeSMS {
+			err = s.VerifyPhone(ctx, user.ID)
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to mark as verified: %w", err)
+		}
+
+		return user, nil
+	}
+
+	// For registration OTPs, return nil user (caller should handle registration)
+	return nil, nil
+}
+
+// LoginWithOTP authenticates a user using OTP and returns JWT tokens
+func (s *Service) LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*AuthResponse, error) {
+	// Verify OTP and get user
+	user, err := s.VerifyOTP(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if user == nil {
+		return nil, fmt.Errorf("no user found for this OTP")
+	}
+
+	// Generate JWT tokens
+	tokenPair, err := s.jwtManager.GenerateTokenPair(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	return &AuthResponse{
+		User:         user,
+		AccessToken:  tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		ExpiresIn:    int(tokenPair.ExpiresIn),
+	}, nil
 }
