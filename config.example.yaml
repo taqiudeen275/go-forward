@@ -48,7 +48,7 @@ auth:
     provider: "arkesel"
     arkesel:
       api_key: "your-arkesel-api-key"
-      sender: "QuickBite"
+      sender: "GoForward"
     twilio:
       account_sid: "your-twilio-account-sid"
       auth_token: "your-twilio-auth-token"
