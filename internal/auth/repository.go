@@ -574,3 +574,15 @@ func (r *UserRepository) CleanupExpiredPasswordResetTokens(ctx context.Context) 
 
 	return nil
 }
+
+// UpdatePassword updates a user's password hash
+func (r *UserRepository) UpdatePassword(ctx context.Context, id string, hashedPassword string) error {
+	query := `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`
+
+	err := r.db.Exec(ctx, query, hashedPassword, id)
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	return nil
+}

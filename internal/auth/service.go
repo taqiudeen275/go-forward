@@ -12,7 +12,7 @@ import (
 
 // Service handles authentication business logic
 type Service struct {
-	repo       *UserRepository
+	repo       UserRepositoryInterface
 	hasher     *PasswordHasher
 	validator  *Validator
 	jwtManager *JWTManager
@@ -224,8 +224,7 @@ func (s *Service) UpdatePassword(ctx context.Context, id, newPassword string) er
 	}
 
 	// Update password in database
-	query := `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`
-	err = s.repo.db.Exec(ctx, query, hashedPassword, id)
+	err = s.repo.UpdatePassword(ctx, id, hashedPassword)
 	if err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}

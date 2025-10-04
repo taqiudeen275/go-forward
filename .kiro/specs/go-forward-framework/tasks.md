@@ -56,7 +56,13 @@
     - Create password reset functionality
     - _Requirements: 1.3, 1.6_
 
-  - [ ]* 3.4 Write authentication service unit tests
+  - [x] 3.4 Write authentication service unit tests
+
+
+
+
+
+
     - Test user registration and login flows
     - Test JWT token generation and validation
     - Test password hashing and validation

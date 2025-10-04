@@ -14,6 +14,7 @@ type UserRepositoryInterface interface {
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, filter *UserFilter) ([]*User, error)
 	Exists(ctx context.Context, identifier string) (bool, error)
+	UpdatePassword(ctx context.Context, id string, hashedPassword string) error
 	CreatePasswordResetToken(ctx context.Context, token *PasswordResetToken) error
 	GetPasswordResetToken(ctx context.Context, token string) (*PasswordResetToken, error)
 	MarkPasswordResetTokenUsed(ctx context.Context, tokenID string) error
