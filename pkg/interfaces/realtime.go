@@ -9,8 +9,8 @@ import (
 
 // RealtimeService defines the real-time service interface
 type RealtimeService interface {
-	CreateChannel(ctx context.Context, name string, config ChannelConfig) (*Channel, error)
-	GetChannel(ctx context.Context, name string) (*Channel, error)
+	CreateChannel(ctx context.Context, name string, config ChannelConfig) (Channel, error)
+	GetChannel(ctx context.Context, name string) (Channel, error)
 	DeleteChannel(ctx context.Context, name string) error
 	BroadcastMessage(ctx context.Context, channelName string, message Message) error
 	SubscribeToChanges(ctx context.Context, channelName string, filter ChangeFilter) error
