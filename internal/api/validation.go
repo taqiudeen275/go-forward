@@ -379,7 +379,7 @@ func (v *RequestValidator) validateTimestamp(col *interfaces.Column, value inter
 func (v *RequestValidator) validateJSON(col *interfaces.Column, value interface{}) error {
 	// JSON can be any valid JSON type: object, array, string, number, boolean, null
 	switch value.(type) {
-	case map[string]interface{}, []interface{}, string, float64, bool, nil:
+	case map[string]interface{}, []interface{}, string, float64, int, int32, int64, bool, nil:
 		return nil
 	default:
 		return fmt.Errorf("invalid JSON value")
@@ -412,9 +412,12 @@ func (v *RequestValidator) validateInet(col *interfaces.Column, value interface{
 		return fmt.Errorf("expected IP address string")
 	}
 
-	// Basic IP address validation (IPv4 and IPv6)
-	ipv4Pattern := `^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$`
-	ipv6Pattern := `^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}(\/\d{1,3})?$`
+	// More comprehensive IP address validation
+	// IPv4 pattern with proper range validation
+	ipv4Pattern := `^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/([0-9]|[1-2][0-9]|3[0-2]))?$`
+
+	// IPv6 pattern (simplified but more accurate)
+	ipv6Pattern := `^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^([0-9a-fA-F]{1,4}:)*::([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{0,4}$|^::1$|^::$`
 
 	ipv4Match, _ := regexp.MatchString(ipv4Pattern, str)
 	ipv6Match, _ := regexp.MatchString(ipv6Pattern, str)

@@ -330,6 +330,21 @@ func (s *Service) isValidColumn(table *interfaces.Table, columnName string) bool
 
 // validateCreateData validates data for record creation
 func (s *Service) validateCreateData(table *interfaces.Table, data map[string]interface{}) error {
+	// Check for unknown fields
+	for fieldName := range data {
+		var found bool
+		for _, col := range table.Columns {
+			if col.Name == fieldName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("unknown field '%s'", fieldName)
+		}
+	}
+
+	// Validate each column
 	for _, col := range table.Columns {
 		value, exists := data[col.Name]
 

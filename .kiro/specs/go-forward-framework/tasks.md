@@ -160,7 +160,7 @@
 
 
 
-  - [ ] 6.2 Add query parameter support
+  - [x] 6.2 Add query parameter support
     - Implement filtering with WHERE clause generation
     - Add sorting with ORDER BY support
     - Create pagination with LIMIT and OFFSET
@@ -168,13 +168,19 @@
 
     - _Requirements: 4.4, 4.5_
 
-  - [ ] 6.3 Integrate authentication and authorization
+  - [x] 6.3 Integrate authentication and authorization
     - Add JWT middleware to protect endpoints
     - Implement RLS policy enforcement
     - Create permission-based access control
     - _Requirements: 4.2, 4.6_
 
-  - [ ]* 6.4 Write REST API service unit tests
+  - [x] 6.4 Write REST API service unit tests
+
+
+
+
+
+
     - Test endpoint generation and registration
     - Test CRUD operations with various data types
     - Test query parameters and filtering
