@@ -125,8 +125,13 @@ type SMTPConfig struct {
 
 // SMSConfig represents SMS configuration
 type SMSConfig struct {
-	Provider string       `yaml:"provider"` // twilio, aws_sns
-	Twilio   TwilioConfig `yaml:"twilio"`
+	Provider string       `yaml:"provider"` // Arkesel, twilio
+	Arkesel   ArkeselConfig `yaml:"arkesel"`
+}
+// ArkeselConfig repesent Arkesel Configration
+type ArkeselConfig struct {
+	ApiKey string `yaml:"api_key"`
+	Sender string `yaml:"sender"`
 }
 
 // TwilioConfig represents Twilio configuration

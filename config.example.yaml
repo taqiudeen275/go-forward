@@ -45,7 +45,10 @@ auth:
     from: "noreply@yourapp.com"
     use_tls: true
   sms:
-    provider: "twilio"
+    provider: "arkesel"
+    arkesel:
+      api_key: "your-arkesel-api-key"
+      sender: "QuickBite"
     twilio:
       account_sid: "your-twilio-account-sid"
       auth_token: "your-twilio-auth-token"
