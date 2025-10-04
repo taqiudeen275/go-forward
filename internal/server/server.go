@@ -10,21 +10,33 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/taqiudeen275/go-foward/internal/auth"
 	"github.com/taqiudeen275/go-foward/internal/config"
+	"github.com/taqiudeen275/go-foward/internal/database"
 	"github.com/taqiudeen275/go-foward/pkg/logger"
 )
 
 type Server struct {
-	config *config.Config
-	router *gin.Engine
-	logger logger.Logger
+	config      *config.Config
+	router      *gin.Engine
+	logger      logger.Logger
+	db          *database.DB
+	authService *auth.Service
+	authHandler *auth.Handler
 }
 
-func New(cfg *config.Config) *Server {
+func New(cfg *config.Config, db *database.DB) *Server {
+	// Initialize auth service
+	authService := auth.NewService(db)
+	authHandler := auth.NewHandler(authService)
+
 	return &Server{
-		config: cfg,
-		router: gin.New(),
-		logger: logger.New(cfg.Server.LogLevel),
+		config:      cfg,
+		router:      gin.New(),
+		logger:      logger.New(cfg.Server.LogLevel),
+		db:          db,
+		authService: authService,
+		authHandler: authHandler,
 	}
 }
 
@@ -73,6 +85,9 @@ func (s *Server) setupRoutes() {
 	s.router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Register authentication routes
+	s.authHandler.RegisterRoutes(s.router)
 }
 
 func (s *Server) loggingMiddleware() gin.HandlerFunc {

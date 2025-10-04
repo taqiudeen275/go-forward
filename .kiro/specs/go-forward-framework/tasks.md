@@ -24,20 +24,33 @@
   - Set up initial database schema for users, migrations, and metadata tables
   - _Requirements: 2.1, 7.1, 7.3_
 
-- [ ] 3. Build authentication service core
-  - [ ] 3.1 Implement user model and database operations
+- [-] 3. Build authentication service core
+
+
+
+
+
+  - [x] 3.1 Implement user model and database operations
+
+
     - Create User struct and database table
     - Implement user CRUD operations with proper validation
     - Add password hashing with bcrypt
     - _Requirements: 1.3, 1.6_
 
-  - [ ] 3.2 Implement JWT token management
+
+
+  - [x] 3.2 Implement JWT token management
     - Create JWT token generation and validation
     - Implement access and refresh token logic
     - Add token middleware for request authentication
+
     - _Requirements: 1.4, 1.7_
 
-  - [ ] 3.3 Add traditional email/username/phone authentication
+  - [x] 3.3 Add traditional email/username/phone authentication
+
+
+
     - Implement login endpoint with credential validation
     - Add user registration with email/username/phone support
     - Create password reset functionality

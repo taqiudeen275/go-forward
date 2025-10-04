@@ -1,0 +1,84 @@
+package auth
+
+import (
+	"time"
+)
+
+// User represents a system user
+type User struct {
+	ID            string                 `json:"id" db:"id"`
+	Email         *string                `json:"email" db:"email"`
+	Phone         *string                `json:"phone" db:"phone"`
+	Username      *string                `json:"username" db:"username"`
+	PasswordHash  string                 `json:"-" db:"password_hash"`
+	EmailVerified bool                   `json:"email_verified" db:"email_verified"`
+	PhoneVerified bool                   `json:"phone_verified" db:"phone_verified"`
+	Metadata      map[string]interface{} `json:"metadata" db:"metadata"`
+	CreatedAt     time.Time              `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time              `json:"updated_at" db:"updated_at"`
+}
+
+// CreateUserRequest represents a request to create a new user
+type CreateUserRequest struct {
+	Email    *string                `json:"email" validate:"omitempty,email"`
+	Phone    *string                `json:"phone" validate:"omitempty,e164"`
+	Username *string                `json:"username" validate:"omitempty,min=3,max=100"`
+	Password string                 `json:"password" validate:"required,min=8"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// UpdateUserRequest represents a request to update a user
+type UpdateUserRequest struct {
+	Email         *string                `json:"email" validate:"omitempty,email"`
+	Phone         *string                `json:"phone" validate:"omitempty,e164"`
+	Username      *string                `json:"username" validate:"omitempty,min=3,max=100"`
+	EmailVerified *bool                  `json:"email_verified"`
+	PhoneVerified *bool                  `json:"phone_verified"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// LoginRequest represents a login request
+type LoginRequest struct {
+	Identifier string `json:"identifier" validate:"required"` // email, phone, or username
+	Password   string `json:"password" validate:"required"`
+}
+
+// AuthResponse represents authentication response
+type AuthResponse struct {
+	User         *User  `json:"user"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+}
+
+// UserFilter represents filters for querying users
+type UserFilter struct {
+	Email         *string `json:"email"`
+	Phone         *string `json:"phone"`
+	Username      *string `json:"username"`
+	EmailVerified *bool   `json:"email_verified"`
+	PhoneVerified *bool   `json:"phone_verified"`
+	Limit         int     `json:"limit"`
+	Offset        int     `json:"offset"`
+}
+
+// PasswordResetRequest represents a password reset request
+type PasswordResetRequest struct {
+	Identifier string `json:"identifier" validate:"required"` // email, phone, or username
+}
+
+// PasswordResetConfirmRequest represents a password reset confirmation request
+type PasswordResetConfirmRequest struct {
+	Token       string `json:"token" validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+// PasswordResetToken represents a password reset token
+type PasswordResetToken struct {
+	ID        string    `json:"id" db:"id"`
+	UserID    string    `json:"user_id" db:"user_id"`
+	Token     string    `json:"token" db:"token"`
+	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
+	Used      bool      `json:"used" db:"used"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
