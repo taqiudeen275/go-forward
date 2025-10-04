@@ -12,6 +12,7 @@ type Service struct {
 	DB        *DB
 	Migration *MigrationService
 	Utils     *DatabaseUtils
+	Meta      *MetaService
 	config    *Config
 }
 
@@ -45,10 +46,14 @@ func NewService(config *Config) (*Service, error) {
 	// Create database utils
 	utils := NewDatabaseUtils(db)
 
+	// Create meta service
+	metaService := NewMetaService(db)
+
 	service := &Service{
 		DB:        db,
 		Migration: migrationService,
 		Utils:     utils,
+		Meta:      metaService,
 		config:    config,
 	}
 
