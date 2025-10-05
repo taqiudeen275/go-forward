@@ -216,11 +216,7 @@
     - Add RLS policy enforcement for change events
     - _Requirements: 2.2, 2.4_
 
-  - [ ] 7.4 Write real-time service unit tests
-
-
-
-
+  - [x] 7.4 Write real-time service unit tests
 
 
     - Test WebSocket connection handling
@@ -228,20 +224,34 @@
     - Test database change event processing
     - _Requirements: 2.2, 2.4, 2.5_
 
-- [ ] 8. Implement file storage service
-  - [ ] 8.1 Create basic file operations
+- [x] 8. Implement file storage service
+
+
+
+
+
+
+
+  - [x] 8.1 Create basic file operations
+
+
     - Implement file upload with multipart form support
     - Add file download with proper MIME type handling
     - Create file deletion with cleanup
     - _Requirements: 6.1, 6.3_
 
-  - [ ] 8.2 Add access control system
+  - [x] 8.2 Add access control system
+
+
     - Implement permission-based file access
     - Create bucket-level and file-level permissions
     - Add user-based access validation
     - _Requirements: 6.2, 6.6_
 
-  - [ ] 8.3 Create file metadata management
+  - [x] 8.3 Create file metadata management
+
+
+
     - Store file information in database
     - Add file versioning support
     - Implement file search and listing
