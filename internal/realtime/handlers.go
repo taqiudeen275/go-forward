@@ -397,8 +397,20 @@ func (h *Handlers) RemoveTableTrigger(c *gin.Context) {
 	})
 }
 
-// RegisterRoutes registers all realtime routes
-func (h *Handlers) RegisterRoutes(router *gin.RouterGroup) {
+// RegisterRoutes registers all realtime routes with the gateway
+func (h *Handlers) RegisterRoutes(router gin.IRouter) {
+	// Create realtime group
+	realtimeGroup := router.Group("/realtime")
+	h.registerRealtimeRoutes(realtimeGroup)
+}
+
+// Name returns the service name
+func (h *Handlers) Name() string {
+	return "realtime"
+}
+
+// registerRealtimeRoutes registers all realtime routes
+func (h *Handlers) registerRealtimeRoutes(router *gin.RouterGroup) {
 	// Channel management routes
 	router.POST("/channels", h.CreateChannel)
 	router.GET("/channels", h.ListChannels)
@@ -425,5 +437,5 @@ func (h *Handlers) RegisterRoutes(router *gin.RouterGroup) {
 	router.GET("/stats", h.GetSystemStats)
 
 	// WebSocket endpoint
-	router.GET("/channels/:channel/ws", h.HandleWebSocket)
+	router.GET("/channels/:name/ws", h.HandleWebSocket)
 }

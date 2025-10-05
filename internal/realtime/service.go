@@ -166,7 +166,7 @@ func (s *Service) GetConnectedUsers(ctx context.Context, channelName string) ([]
 // HandleWebSocket handles WebSocket upgrade and connection
 func (s *Service) HandleWebSocket(c *gin.Context) {
 	// Extract channel name from URL parameter
-	channelName := c.Param("channel")
+	channelName := c.Param("name")
 	if channelName == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "channel name is required"})
 		return

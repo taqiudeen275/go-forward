@@ -134,6 +134,37 @@ func (s *Service) GetRouter() *gin.Engine {
 	return s.router
 }
 
+// RegisterRoutes registers API service routes with the gateway
+func (s *Service) RegisterRoutes(router gin.IRouter) {
+	// Mount all generated endpoints under /api/v1
+	apiGroup := router.Group("/api/v1")
+
+	// Register all existing routes from our internal router
+	for _, route := range s.router.Routes() {
+		// Extract the path without the /api/v1 prefix if it exists
+		path := strings.TrimPrefix(route.Path, "/api/v1")
+
+		// Register the route with the gateway
+		switch route.Method {
+		case "GET":
+			apiGroup.GET(path, route.HandlerFunc)
+		case "POST":
+			apiGroup.POST(path, route.HandlerFunc)
+		case "PUT":
+			apiGroup.PUT(path, route.HandlerFunc)
+		case "DELETE":
+			apiGroup.DELETE(path, route.HandlerFunc)
+		case "PATCH":
+			apiGroup.PATCH(path, route.HandlerFunc)
+		}
+	}
+}
+
+// Name returns the service name
+func (s *Service) Name() string {
+	return "api"
+}
+
 // Helper methods
 
 // isSystemTable checks if a table should be excluded from API generation

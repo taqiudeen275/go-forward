@@ -21,7 +21,7 @@ database:
   port: 5432
   name: "goforward"
   user: "postgres"
-  password: "password"
+  password: "postgres"
   ssl_mode: "disable"
   max_connections: 25
   max_idle_connections: 5

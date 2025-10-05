@@ -19,7 +19,7 @@ func NewHandler(service *Service) *Handler {
 }
 
 // RegisterRoutes registers authentication routes
-func (h *Handler) RegisterRoutes(router *gin.Engine) {
+func (h *Handler) RegisterRoutes(router gin.IRouter) {
 	auth := router.Group("/auth")
 	{
 		auth.POST("/register", h.Register)
@@ -28,6 +28,11 @@ func (h *Handler) RegisterRoutes(router *gin.Engine) {
 		auth.POST("/password-reset", h.RequestPasswordReset)
 		auth.POST("/password-reset/confirm", h.ConfirmPasswordReset)
 	}
+}
+
+// Name returns the service name
+func (h *Handler) Name() string {
+	return "auth"
 }
 
 // Register handles user registration

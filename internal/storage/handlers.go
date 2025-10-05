@@ -369,33 +369,45 @@ func (h *Handlers) GetBuckets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"buckets": buckets})
 }
 
-// RegisterRoutes registers storage routes with the router
-func (h *Handlers) RegisterRoutes(router *gin.RouterGroup) {
-	storage := router.Group("/storage")
-	{
-		// Bucket operations
-		storage.GET("/buckets", h.GetBuckets)
-		storage.POST("/buckets/:bucket", h.CreateBucket)
-		storage.DELETE("/buckets/:bucket", h.DeleteBucket)
-
-		// File operations
-		storage.POST("/files/:bucket/*path", h.UploadFile)
-		storage.GET("/files/:bucket/*path", h.DownloadFile)
-		storage.DELETE("/files/:bucket/*path", h.DeleteFile)
-		storage.HEAD("/files/:bucket/*path", h.GetFileInfo)
-
-		// File listing
-		storage.GET("/files/:bucket", h.ListFiles)
-	}
+// RegisterRoutes registers storage routes with the gateway
+func (h *Handlers) RegisterRoutes(router gin.IRouter) {
+	// Create storage group
+	storageGroup := router.Group("/storage")
+	h.registerStorageRoutes(storageGroup)
 
 	// Public file access (no auth required)
-	public := router.Group("/public")
-	{
-		public.GET("/:bucket/*path", func(c *gin.Context) {
-			// Remove leading slash from path parameter
-			path := strings.TrimPrefix(c.Param("path"), "/")
-			c.Set("path", path)
-			h.DownloadFile(c)
-		})
-	}
+	publicGroup := router.Group("/public")
+	h.registerPublicRoutes(publicGroup)
+}
+
+// Name returns the service name
+func (h *Handlers) Name() string {
+	return "storage"
+}
+
+// registerStorageRoutes registers storage routes with the router
+func (h *Handlers) registerStorageRoutes(router *gin.RouterGroup) {
+	// Bucket operations
+	router.GET("/buckets", h.GetBuckets)
+	router.POST("/buckets/:bucket", h.CreateBucket)
+	router.DELETE("/buckets/:bucket", h.DeleteBucket)
+
+	// File operations
+	router.POST("/files/:bucket/*path", h.UploadFile)
+	router.GET("/files/:bucket/*path", h.DownloadFile)
+	router.DELETE("/files/:bucket/*path", h.DeleteFile)
+	router.HEAD("/files/:bucket/*path", h.GetFileInfo)
+
+	// File listing
+	router.GET("/files/:bucket", h.ListFiles)
+}
+
+// registerPublicRoutes registers public routes
+func (h *Handlers) registerPublicRoutes(router *gin.RouterGroup) {
+	router.GET("/:bucket/*path", func(c *gin.Context) {
+		// Remove leading slash from path parameter
+		path := strings.TrimPrefix(c.Param("path"), "/")
+		c.Set("path", path)
+		h.DownloadFile(c)
+	})
 }

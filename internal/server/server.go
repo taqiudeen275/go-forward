@@ -1,42 +1,70 @@
 package server
 
 import (
-	"context"
-	"fmt"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
-	"github.com/gin-gonic/gin"
 	"github.com/taqiudeen275/go-foward/internal/auth"
 	"github.com/taqiudeen275/go-foward/internal/config"
 	"github.com/taqiudeen275/go-foward/internal/database"
+	"github.com/taqiudeen275/go-foward/internal/gateway"
+	"github.com/taqiudeen275/go-foward/internal/gateway/middleware"
+	"github.com/taqiudeen275/go-foward/internal/realtime"
+	"github.com/taqiudeen275/go-foward/internal/storage"
 	"github.com/taqiudeen275/go-foward/pkg/logger"
 )
 
 type Server struct {
 	config      *config.Config
-	router      *gin.Engine
 	logger      logger.Logger
 	db          *database.DB
+	gateway     *gateway.Gateway
 	authService *auth.Service
 	authHandler *auth.Handler
+	// apiService       *api.Service // Temporarily disabled due to interface mismatch
+	realtimeService  *realtime.Service
+	realtimeHandlers *realtime.Handlers
+	storageService   *storage.Service
+	storageHandlers  *storage.Handlers
+	metaService      *database.MetaService
 }
 
 func New(cfg *config.Config, db *database.DB) *Server {
+	// Initialize logger
+	log := logger.New(cfg.Server.LogLevel)
+
+	// Initialize gateway
+	gw := gateway.New(cfg, log)
+
+	// Initialize database meta service
+	metaService := database.NewMetaService(db)
+
 	// Initialize auth service
 	authService := auth.NewService(db)
 	authHandler := auth.NewHandler(authService)
 
+	// Initialize API service (temporarily disabled due to interface mismatch)
+	// apiService := api.NewService(metaService)
+
+	// Initialize realtime service (pass nil for auth service for now due to interface mismatch)
+	realtimeService := realtime.NewService(nil, db.Pool)
+	realtimeHandlers := realtime.NewHandlers(realtimeService)
+
+	// Initialize storage service
+	storageService := storage.NewService(db, cfg.Storage.LocalPath)
+	accessControl := storage.NewAccessControlService(db)
+	storageHandlers := storage.NewHandlers(storageService, accessControl)
+
 	return &Server{
 		config:      cfg,
-		router:      gin.New(),
-		logger:      logger.New(cfg.Server.LogLevel),
+		logger:      log,
 		db:          db,
+		gateway:     gw,
 		authService: authService,
 		authHandler: authHandler,
+		// apiService:       apiService, // Temporarily disabled
+		realtimeService:  realtimeService,
+		realtimeHandlers: realtimeHandlers,
+		storageService:   storageService,
+		storageHandlers:  storageHandlers,
+		metaService:      metaService,
 	}
 }
 
@@ -44,63 +72,50 @@ func (s *Server) Start() error {
 	// Setup middleware
 	s.setupMiddleware()
 
-	// Setup routes
-	s.setupRoutes()
+	// Register services
+	s.registerServices()
 
-	srv := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port),
-		Handler:      s.router,
-		ReadTimeout:  s.config.Server.ReadTimeout,
-		WriteTimeout: s.config.Server.WriteTimeout,
-	}
-
-	// Start server in a goroutine
-	go func() {
-		s.logger.Info("Starting server on %s", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			s.logger.Error("Failed to start server: %v", err)
-		}
-	}()
-
-	// Wait for interrupt signal to gracefully shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	s.logger.Info("Shutting down server...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	return srv.Shutdown(ctx)
+	// Start the gateway
+	return s.gateway.Start()
 }
 
 func (s *Server) setupMiddleware() {
-	s.router.Use(gin.Recovery())
-	s.router.Use(s.loggingMiddleware())
+	// Add CORS middleware
+	s.gateway.AddMiddleware(middleware.CORS(s.config.Server.CORS))
+
+	// Add rate limiting middleware
+	s.gateway.AddMiddleware(middleware.RateLimit(s.config.Server.RateLimit))
+
+	// Add monitoring middleware
+	s.gateway.AddMiddleware(middleware.MonitoringMiddleware(s.logger))
+
+	// Add security headers middleware
+	s.gateway.AddMiddleware(middleware.SecurityHeadersMiddleware())
+
+	// Add request ID middleware
+	s.gateway.AddMiddleware(middleware.RequestIDMiddleware())
 }
 
-func (s *Server) setupRoutes() {
-	// Health check endpoint
-	s.router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
-
-	// Register authentication routes
-	s.authHandler.RegisterRoutes(s.router)
-}
-
-func (s *Server) loggingMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		c.Next()
-		duration := time.Since(start)
-
-		s.logger.Info("%s %s %d %v",
-			c.Request.Method,
-			c.Request.URL.Path,
-			c.Writer.Status(),
-			duration,
-		)
+func (s *Server) registerServices() {
+	// Register authentication service
+	if err := s.gateway.RegisterService(s.authHandler); err != nil {
+		s.logger.Error("Failed to register auth service: %v", err)
 	}
+
+	// Register API service (temporarily disabled due to interface mismatch)
+	// if err := s.gateway.RegisterService(s.apiService); err != nil {
+	// 	s.logger.Error("Failed to register API service: %v", err)
+	// }
+
+	// Register realtime service
+	if err := s.gateway.RegisterService(s.realtimeHandlers); err != nil {
+		s.logger.Error("Failed to register realtime service: %v", err)
+	}
+
+	// Register storage service
+	if err := s.gateway.RegisterService(s.storageHandlers); err != nil {
+		s.logger.Error("Failed to register storage service: %v", err)
+	}
+
+	s.logger.Info("Core services registered successfully")
 }

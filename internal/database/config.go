@@ -26,7 +26,7 @@ func DefaultConfig() *Config {
 		Port:            5432,
 		Name:            "goforward",
 		User:            "postgres",
-		Password:        "password",
+		Password:        "postgres",
 		SSLMode:         "disable",
 		MaxConns:        25,
 		MinConns:        5,
