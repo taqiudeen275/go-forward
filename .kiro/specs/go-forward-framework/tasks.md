@@ -315,7 +315,13 @@
     - Connect storage service endpoints
     - _Requirements: 1.1, 1.2, 1.3, 4.1, 6.1, 2.2_
 
-  - [ ]* 9.4 Write gateway integration tests
+  - [x] 9.4 Write gateway integration tests
+
+
+
+
+
+
     - Test service registration and routing
     - Test middleware functionality
     - Test end-to-end request flows
