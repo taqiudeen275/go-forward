@@ -5,9 +5,11 @@ import (
 	"github.com/taqiudeen275/go-foward/internal/auth"
 	"github.com/taqiudeen275/go-foward/internal/config"
 	"github.com/taqiudeen275/go-foward/internal/database"
+	"github.com/taqiudeen275/go-foward/internal/email"
 	"github.com/taqiudeen275/go-foward/internal/gateway"
 	"github.com/taqiudeen275/go-foward/internal/gateway/middleware"
 	"github.com/taqiudeen275/go-foward/internal/realtime"
+	"github.com/taqiudeen275/go-foward/internal/sms"
 	"github.com/taqiudeen275/go-foward/internal/storage"
 	"github.com/taqiudeen275/go-foward/pkg/logger"
 )
@@ -39,8 +41,41 @@ func New(cfg *config.Config, db *database.DB) *Server {
 	metaService := database.NewMetaService(db)
 	databaseHandlers := database.NewHandlers(metaService)
 
-	// Initialize auth service
-	authService := auth.NewService(db)
+	// Initialize auth service with configuration
+	authService := auth.NewServiceWithConfig(
+		db,
+		cfg.Auth.JWTSecret,
+		cfg.Auth.JWTExpiration,
+		cfg.Auth.RefreshExpiration,
+	)
+
+	// Set up email service if SMTP is configured
+	if cfg.Auth.SMTP.Host != "" {
+		smtpConfig := email.SMTPConfig{
+			Host:     cfg.Auth.SMTP.Host,
+			Port:     cfg.Auth.SMTP.Port,
+			Username: cfg.Auth.SMTP.Username,
+			Password: cfg.Auth.SMTP.Password,
+			From:     cfg.Auth.SMTP.From,
+			UseTLS:   cfg.Auth.SMTP.UseTLS,
+		}
+		smtpProvider := email.NewSMTPProvider(smtpConfig)
+		emailService := email.NewService(smtpProvider, "Go Forward")
+		authService.SetEmailService(emailService)
+		log.Info("Email service configured for OTP delivery")
+	}
+
+	// Set up SMS service if Arkesel is configured
+	if cfg.Auth.SMS.Arkesel.ApiKey != "" {
+		arkeselProvider := sms.NewArkeselProvider(
+			cfg.Auth.SMS.Arkesel.ApiKey,
+			cfg.Auth.SMS.Arkesel.Sender,
+		)
+		smsService := sms.NewService(arkeselProvider, "Go Forward")
+		authService.SetSMSService(smsService)
+		log.Info("SMS service configured for OTP delivery")
+	}
+
 	authHandler := auth.NewHandler(authService)
 
 	// Initialize API service with adapter

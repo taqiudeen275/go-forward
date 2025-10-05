@@ -65,9 +65,14 @@ func (s *SMTPProvider) SendHTMLEmail(ctx context.Context, to, subject, htmlBody,
 	return smtp.SendMail(addr, auth, s.from, []string{to}, []byte(msg))
 }
 
-// sendWithTLS sends email using TLS connection
+// sendWithTLS sends email using STARTTLS (for port 587)
 func (s *SMTPProvider) sendWithTLS(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
-	// Create TLS connection
+	// For port 587, we need STARTTLS, not direct TLS connection
+	if s.port == 587 {
+		return s.sendWithSTARTTLS(addr, auth, from, to, msg)
+	}
+
+	// For port 465, use direct TLS connection
 	tlsConfig := &tls.Config{
 		ServerName: s.host,
 	}
@@ -84,6 +89,58 @@ func (s *SMTPProvider) sendWithTLS(addr string, auth smtp.Auth, from string, to 
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
 	defer client.Quit()
+
+	// Authenticate if credentials provided
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP authentication failed: %w", err)
+		}
+	}
+
+	// Set sender
+	if err := client.Mail(from); err != nil {
+		return fmt.Errorf("failed to set sender: %w", err)
+	}
+
+	// Set recipients
+	for _, recipient := range to {
+		if err := client.Rcpt(recipient); err != nil {
+			return fmt.Errorf("failed to set recipient %s: %w", recipient, err)
+		}
+	}
+
+	// Send message
+	writer, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("failed to get data writer: %w", err)
+	}
+
+	_, err = writer.Write(msg)
+	if err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+
+	return writer.Close()
+}
+
+// sendWithSTARTTLS sends email using STARTTLS (proper method for port 587)
+func (s *SMTPProvider) sendWithSTARTTLS(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+	// Connect to SMTP server without TLS first
+	client, err := smtp.Dial(addr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to SMTP server: %w", err)
+	}
+	defer client.Quit()
+
+	// Start TLS if supported
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		tlsConfig := &tls.Config{
+			ServerName: s.host,
+		}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("failed to start TLS: %w", err)
+		}
+	}
 
 	// Authenticate if credentials provided
 	if auth != nil {
