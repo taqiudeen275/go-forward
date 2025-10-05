@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/taqiudeen275/go-foward/internal/api"
 	"github.com/taqiudeen275/go-foward/internal/auth"
 	"github.com/taqiudeen275/go-foward/internal/config"
 	"github.com/taqiudeen275/go-foward/internal/database"
@@ -12,18 +13,19 @@ import (
 )
 
 type Server struct {
-	config      *config.Config
-	logger      logger.Logger
-	db          *database.DB
-	gateway     *gateway.Gateway
-	authService *auth.Service
-	authHandler *auth.Handler
-	// apiService       *api.Service // Temporarily disabled due to interface mismatch
+	config           *config.Config
+	logger           logger.Logger
+	db               *database.DB
+	gateway          *gateway.Gateway
+	authService      *auth.Service
+	authHandler      *auth.Handler
+	apiService       *api.Service
 	realtimeService  *realtime.Service
 	realtimeHandlers *realtime.Handlers
 	storageService   *storage.Service
 	storageHandlers  *storage.Handlers
 	metaService      *database.MetaService
+	databaseHandlers *database.Handlers
 }
 
 func New(cfg *config.Config, db *database.DB) *Server {
@@ -35,13 +37,15 @@ func New(cfg *config.Config, db *database.DB) *Server {
 
 	// Initialize database meta service
 	metaService := database.NewMetaService(db)
+	databaseHandlers := database.NewHandlers(metaService)
 
 	// Initialize auth service
 	authService := auth.NewService(db)
 	authHandler := auth.NewHandler(authService)
 
-	// Initialize API service (temporarily disabled due to interface mismatch)
-	// apiService := api.NewService(metaService)
+	// Initialize API service with adapter
+	metaServiceAdapter := database.NewMetaServiceAdapter(metaService)
+	apiService := api.NewService(metaServiceAdapter)
 
 	// Initialize realtime service (pass nil for auth service for now due to interface mismatch)
 	realtimeService := realtime.NewService(nil, db.Pool)
@@ -53,18 +57,19 @@ func New(cfg *config.Config, db *database.DB) *Server {
 	storageHandlers := storage.NewHandlers(storageService, accessControl)
 
 	return &Server{
-		config:      cfg,
-		logger:      log,
-		db:          db,
-		gateway:     gw,
-		authService: authService,
-		authHandler: authHandler,
-		// apiService:       apiService, // Temporarily disabled
+		config:           cfg,
+		logger:           log,
+		db:               db,
+		gateway:          gw,
+		authService:      authService,
+		authHandler:      authHandler,
+		apiService:       apiService,
 		realtimeService:  realtimeService,
 		realtimeHandlers: realtimeHandlers,
 		storageService:   storageService,
 		storageHandlers:  storageHandlers,
 		metaService:      metaService,
+		databaseHandlers: databaseHandlers,
 	}
 }
 
@@ -102,10 +107,10 @@ func (s *Server) registerServices() {
 		s.logger.Error("Failed to register auth service: %v", err)
 	}
 
-	// Register API service (temporarily disabled due to interface mismatch)
-	// if err := s.gateway.RegisterService(s.apiService); err != nil {
-	// 	s.logger.Error("Failed to register API service: %v", err)
-	// }
+	// Register API service
+	if err := s.gateway.RegisterService(s.apiService); err != nil {
+		s.logger.Error("Failed to register API service: %v", err)
+	}
 
 	// Register realtime service
 	if err := s.gateway.RegisterService(s.realtimeHandlers); err != nil {
@@ -117,5 +122,10 @@ func (s *Server) registerServices() {
 		s.logger.Error("Failed to register storage service: %v", err)
 	}
 
-	s.logger.Info("Core services registered successfully")
+	// Register database meta service
+	if err := s.gateway.RegisterService(s.databaseHandlers); err != nil {
+		s.logger.Error("Failed to register database service: %v", err)
+	}
+
+	s.logger.Info("All services registered successfully")
 }

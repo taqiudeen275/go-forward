@@ -27,6 +27,11 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 		auth.POST("/refresh", h.RefreshToken)
 		auth.POST("/password-reset", h.RequestPasswordReset)
 		auth.POST("/password-reset/confirm", h.ConfirmPasswordReset)
+
+		// OTP endpoints
+		auth.POST("/otp/send", h.SendOTP)
+		auth.POST("/otp/verify", h.VerifyOTP)
+		auth.POST("/otp/login", h.LoginWithOTP)
 	}
 }
 
@@ -121,4 +126,60 @@ func (h *Handler) ConfirmPasswordReset(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset successful"})
+}
+
+// SendOTP handles OTP generation and sending
+func (h *Handler) SendOTP(c *gin.Context) {
+	var req OTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	err := h.service.SendOTP(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP sent successfully"})
+}
+
+// VerifyOTP handles OTP verification
+func (h *Handler) VerifyOTP(c *gin.Context) {
+	var req VerifyOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	user, err := h.service.VerifyOTP(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response := gin.H{"message": "OTP verified successfully"}
+	if user != nil {
+		response["user"] = user
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// LoginWithOTP handles OTP-based authentication
+func (h *Handler) LoginWithOTP(c *gin.Context) {
+	var req VerifyOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	authResponse, err := h.service.LoginWithOTP(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, authResponse)
 }
