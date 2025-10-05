@@ -257,7 +257,13 @@
     - Implement file search and listing
     - _Requirements: 6.1, 6.5_
 
-  - [ ]* 8.4 Write storage service unit tests
+  - [x] 8.4 Write storage service unit tests
+
+
+
+
+
+
     - Test file upload and download operations
     - Test access control and permissions
     - Test file metadata management

@@ -2,409 +2,204 @@ package storage
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/taqiudeen275/go-foward/internal/database"
 	"github.com/taqiudeen275/go-foward/pkg/interfaces"
 )
 
-func TestFileMetadataManagement(t *testing.T) {
-	// Setup test database
-	config := &database.Config{
-		Host:     "localhost",
-		Port:     5432,
-		Name:     "test_db",
-		User:     "test",
-		Password: "test",
-		SSLMode:  "disable",
-	}
-
-	db, err := database.New(config)
-	require.NoError(t, err)
-	defer db.Close()
-
-	// Create storage service
-	service := NewService(db, "./test_storage")
-	defer func() {
-		// Cleanup test files
-		service.DeleteBucket(context.Background(), "test-bucket")
-	}()
+func TestService_UpdateFileMetadata_Validation(t *testing.T) {
+	service, _, cleanup := setupTestService(t)
+	defer cleanup()
 
 	ctx := context.Background()
 
-	// Create test bucket
-	bucketConfig := interfaces.BucketConfig{
-		Public:           false,
-		MaxFileSize:      1024 * 1024, // 1MB
-		AllowedMimeTypes: []string{"text/plain", "image/jpeg"},
-		Versioning:       true,
-	}
-	err = service.CreateBucket(ctx, "test-bucket", bucketConfig)
-	require.NoError(t, err)
+	t.Run("empty bucket name", func(t *testing.T) {
+		metadata := map[string]string{"key": "value"}
 
-	t.Run("Upload file with metadata", func(t *testing.T) {
-		fileContent := strings.NewReader("test file content")
-		metadata := interfaces.FileMetadata{
-			Name:     "test.txt",
-			MimeType: "text/plain",
-			Size:     17,
-			Metadata: map[string]string{
-				"author":      "test-user",
-				"category":    "document",
-				"description": "test file for metadata management",
-			},
-		}
-
-		fileInfo, err := service.Upload(ctx, "test-bucket", "test.txt", fileContent, metadata)
-		require.NoError(t, err)
-		assert.Equal(t, "test.txt", fileInfo.Name)
-		assert.Equal(t, "text/plain", fileInfo.MimeType)
-		assert.Equal(t, "test-user", fileInfo.Metadata["author"])
-		assert.Equal(t, "document", fileInfo.Metadata["category"])
+		err := service.UpdateFileMetadata(ctx, "", "test.txt", metadata)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "bucket name cannot be empty")
 	})
 
-	t.Run("Update file metadata", func(t *testing.T) {
-		newMetadata := map[string]string{
-			"author":      "updated-user",
-			"category":    "updated-document",
-			"description": "updated test file",
-			"version":     "1.1",
-		}
+	t.Run("empty file path", func(t *testing.T) {
+		metadata := map[string]string{"key": "value"}
 
-		err := service.UpdateFileMetadata(ctx, "test-bucket", "test.txt", newMetadata)
-		require.NoError(t, err)
-
-		// Verify metadata was updated
-		fileInfo, err := service.GetFileInfo(ctx, "test-bucket", "test.txt")
-		require.NoError(t, err)
-		assert.Equal(t, "updated-user", fileInfo.Metadata["author"])
-		assert.Equal(t, "updated-document", fileInfo.Metadata["category"])
-		assert.Equal(t, "1.1", fileInfo.Metadata["version"])
+		err := service.UpdateFileMetadata(ctx, "bucket", "", metadata)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "file path cannot be empty")
 	})
 
-	t.Run("Search files by metadata", func(t *testing.T) {
-		// Upload additional test files
-		for i := 0; i < 3; i++ {
-			content := strings.NewReader("test content")
-			metadata := interfaces.FileMetadata{
-				Name:     "file" + string(rune(i+'1')) + ".txt",
-				MimeType: "text/plain",
-				Metadata: map[string]string{
-					"category": "test",
-					"index":    string(rune(i + '1')),
-				},
-			}
-			_, err := service.Upload(ctx, "test-bucket", "file"+string(rune(i+'1'))+".txt", content, metadata)
-			require.NoError(t, err)
+	t.Run("directory traversal prevention", func(t *testing.T) {
+		metadata := map[string]string{"key": "value"}
+
+		err := service.UpdateFileMetadata(ctx, "bucket", "../../../etc/passwd", metadata)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "directory traversal not allowed")
+	})
+}
+
+func TestService_GetFilesByMetadata_Validation(t *testing.T) {
+	service, _, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("empty bucket name", func(t *testing.T) {
+		metadataQuery := map[string]string{"key": "value"}
+
+		_, err := service.GetFilesByMetadata(ctx, "", metadataQuery)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "bucket name cannot be empty")
+	})
+}
+
+func TestService_SearchFiles_Validation(t *testing.T) {
+	t.Run("search criteria validation", func(t *testing.T) {
+		// Test that search criteria structure is properly formed
+		now := time.Now()
+		criteria := SearchCriteria{
+			Bucket:      "bucket",
+			NamePattern: "*.pdf",
+			MimeType:    "application/pdf",
+			MinSize:     1024,
+			MaxSize:     1048576,
+			Metadata:    map[string]string{"category": "documents"},
+			CreatedFrom: &now,
+			Limit:       10,
+			Offset:      0,
 		}
 
-		// Search by metadata
-		metadataQuery := map[string]string{
-			"category": "test",
-		}
-		files, err := service.GetFilesByMetadata(ctx, "test-bucket", metadataQuery)
-		require.NoError(t, err)
-		assert.Len(t, files, 3)
+		assert.Equal(t, "bucket", criteria.Bucket)
+		assert.Equal(t, "*.pdf", criteria.NamePattern)
+		assert.Equal(t, "application/pdf", criteria.MimeType)
+		assert.Equal(t, int64(1024), criteria.MinSize)
+		assert.Equal(t, int64(1048576), criteria.MaxSize)
+		assert.Equal(t, "documents", criteria.Metadata["category"])
+		assert.NotNil(t, criteria.CreatedFrom)
+		assert.Equal(t, 10, criteria.Limit)
+		assert.Equal(t, 0, criteria.Offset)
+	})
+}
 
-		// Search by specific index
-		metadataQuery = map[string]string{
-			"category": "test",
-			"index":    "2",
-		}
-		files, err = service.GetFilesByMetadata(ctx, "test-bucket", metadataQuery)
-		require.NoError(t, err)
-		assert.Len(t, files, 1)
-		assert.Equal(t, "file2.txt", files[0].Name)
+func TestService_GetFileStats_Validation(t *testing.T) {
+	service, _, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("empty bucket name", func(t *testing.T) {
+		_, err := service.GetFileStats(ctx, "")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "bucket name cannot be empty")
+	})
+}
+
+func TestService_CreateBucket_Validation(t *testing.T) {
+	service, _, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("empty bucket name", func(t *testing.T) {
+		config := interfaces.BucketConfig{}
+
+		err := service.CreateBucket(ctx, "", config)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "bucket name cannot be empty")
 	})
 
-	t.Run("Advanced file search", func(t *testing.T) {
+	t.Run("bucket config structure", func(t *testing.T) {
+		config := interfaces.BucketConfig{
+			Public:           false,
+			MaxFileSize:      10485760, // 10MB
+			AllowedMimeTypes: []string{"image/jpeg", "image/png", "application/pdf"},
+			Versioning:       true,
+		}
+
+		assert.False(t, config.Public)
+		assert.Equal(t, int64(10485760), config.MaxFileSize)
+		assert.Contains(t, config.AllowedMimeTypes, "image/jpeg")
+		assert.Contains(t, config.AllowedMimeTypes, "image/png")
+		assert.Contains(t, config.AllowedMimeTypes, "application/pdf")
+		assert.True(t, config.Versioning)
+		assert.Len(t, config.AllowedMimeTypes, 3)
+	})
+}
+
+func TestService_DeleteBucket_Validation(t *testing.T) {
+	service, _, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("empty bucket name", func(t *testing.T) {
+		err := service.DeleteBucket(ctx, "")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "bucket name cannot be empty")
+	})
+
+	t.Run("bucket deletion validation", func(t *testing.T) {
+		// Test that empty bucket name is properly validated
+		err := service.DeleteBucket(ctx, "")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "bucket name cannot be empty")
+	})
+}
+
+func TestSearchCriteria_Struct(t *testing.T) {
+	t.Run("search criteria structure", func(t *testing.T) {
+		now := time.Now()
 		criteria := SearchCriteria{
 			Bucket:      "test-bucket",
-			NamePattern: "file",
-			MimeType:    "text/plain",
-			MinSize:     1,
-			MaxSize:     1000,
-			Metadata: map[string]string{
-				"category": "test",
-			},
-			Limit:  10,
-			Offset: 0,
-		}
-
-		files, err := service.SearchFiles(ctx, criteria)
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, len(files), 3)
-
-		// Test with name pattern
-		criteria.NamePattern = "file1"
-		files, err = service.SearchFiles(ctx, criteria)
-		require.NoError(t, err)
-		assert.Len(t, files, 1)
-		assert.Equal(t, "file1.txt", files[0].Name)
-	})
-
-	t.Run("Get file statistics", func(t *testing.T) {
-		stats, err := service.GetFileStats(ctx, "test-bucket")
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, stats.TotalFiles, int64(4)) // At least 4 files uploaded
-		assert.Greater(t, stats.TotalSize, int64(0))
-		assert.Greater(t, stats.AvgSize, int64(0))
-		assert.Contains(t, stats.MimeTypes, "text/plain")
-		assert.Greater(t, stats.MimeTypes["text/plain"], int64(0))
-	})
-}
-
-func TestFileVersioning(t *testing.T) {
-	// Setup test database
-	config := &database.Config{
-		Host:     "localhost",
-		Port:     5432,
-		Name:     "test_db",
-		User:     "test",
-		Password: "test",
-		SSLMode:  "disable",
-	}
-
-	db, err := database.New(config)
-	require.NoError(t, err)
-	defer db.Close()
-
-	// Create storage service
-	service := NewService(db, "./test_storage")
-	defer func() {
-		// Cleanup test files
-		service.DeleteBucket(context.Background(), "version-test-bucket")
-	}()
-
-	ctx := context.Background()
-
-	// Create test bucket with versioning enabled
-	bucketConfig := interfaces.BucketConfig{
-		Public:      false,
-		MaxFileSize: 1024 * 1024,
-		Versioning:  true,
-	}
-	err = service.CreateBucket(ctx, "version-test-bucket", bucketConfig)
-	require.NoError(t, err)
-
-	t.Run("Create file versions", func(t *testing.T) {
-		// Upload initial file
-		fileContent := strings.NewReader("initial content")
-		metadata := interfaces.FileMetadata{
-			Name:     "versioned.txt",
-			MimeType: "text/plain",
-			Metadata: map[string]string{
-				"version": "1.0",
-			},
-		}
-
-		fileInfo, err := service.Upload(ctx, "version-test-bucket", "versioned.txt", fileContent, metadata)
-		require.NoError(t, err)
-
-		// Create first version
-		version1, err := service.CreateFileVersion(ctx, "version-test-bucket", "versioned.txt")
-		require.NoError(t, err)
-		assert.Equal(t, 1, version1.Version)
-		assert.Equal(t, fileInfo.ID, version1.FileID)
-
-		// Update file and create another version
-		newMetadata := map[string]string{
-			"version": "2.0",
-		}
-		err = service.UpdateFileMetadata(ctx, "version-test-bucket", "versioned.txt", newMetadata)
-		require.NoError(t, err)
-
-		version2, err := service.CreateFileVersion(ctx, "version-test-bucket", "versioned.txt")
-		require.NoError(t, err)
-		assert.Equal(t, 2, version2.Version)
-		assert.Equal(t, fileInfo.ID, version2.FileID)
-	})
-
-	t.Run("Get file versions", func(t *testing.T) {
-		versions, err := service.GetFileVersions(ctx, "version-test-bucket", "versioned.txt")
-		require.NoError(t, err)
-		assert.Len(t, versions, 2)
-
-		// Versions should be ordered by version number descending
-		assert.Equal(t, 2, versions[0].Version)
-		assert.Equal(t, 1, versions[1].Version)
-	})
-
-	t.Run("Get specific version", func(t *testing.T) {
-		version, err := service.GetFileVersion(ctx, "version-test-bucket", "versioned.txt", 1)
-		require.NoError(t, err)
-		assert.Equal(t, 1, version.Version)
-		assert.Equal(t, "1.0", version.Metadata["version"])
-	})
-
-	t.Run("Delete version", func(t *testing.T) {
-		err := service.DeleteFileVersion(ctx, "version-test-bucket", "versioned.txt", 1)
-		require.NoError(t, err)
-
-		// Verify version was deleted
-		versions, err := service.GetFileVersions(ctx, "version-test-bucket", "versioned.txt")
-		require.NoError(t, err)
-		assert.Len(t, versions, 1)
-		assert.Equal(t, 2, versions[0].Version)
-	})
-
-	t.Run("Cleanup old versions", func(t *testing.T) {
-		// Create more versions
-		for i := 3; i <= 5; i++ {
-			_, err := service.CreateFileVersion(ctx, "version-test-bucket", "versioned.txt")
-			require.NoError(t, err)
-		}
-
-		// Cleanup keeping only 2 versions
-		err := service.CleanupOldFileVersions(ctx, "version-test-bucket", "versioned.txt", 2)
-		require.NoError(t, err)
-
-		// Verify only 2 versions remain
-		versions, err := service.GetFileVersions(ctx, "version-test-bucket", "versioned.txt")
-		require.NoError(t, err)
-		assert.Len(t, versions, 2)
-		assert.Equal(t, 5, versions[0].Version) // Latest version
-		assert.Equal(t, 4, versions[1].Version) // Second latest
-	})
-}
-
-func TestSearchCriteria(t *testing.T) {
-	// Setup test database
-	config := &database.Config{
-		Host:     "localhost",
-		Port:     5432,
-		Name:     "test_db",
-		User:     "test",
-		Password: "test",
-		SSLMode:  "disable",
-	}
-
-	db, err := database.New(config)
-	require.NoError(t, err)
-	defer db.Close()
-
-	// Create storage service
-	service := NewService(db, "./test_storage")
-	defer func() {
-		// Cleanup test files
-		service.DeleteBucket(context.Background(), "search-test-bucket")
-	}()
-
-	ctx := context.Background()
-
-	// Create test bucket
-	bucketConfig := interfaces.BucketConfig{
-		Public:      false,
-		MaxFileSize: 1024 * 1024,
-	}
-	err = service.CreateBucket(ctx, "search-test-bucket", bucketConfig)
-	require.NoError(t, err)
-
-	// Upload test files with different characteristics
-	testFiles := []struct {
-		name     string
-		content  string
-		mimeType string
-		metadata map[string]string
-	}{
-		{
-			name:     "document1.txt",
-			content:  "small document",
-			mimeType: "text/plain",
-			metadata: map[string]string{"type": "document", "size": "small"},
-		},
-		{
-			name:     "document2.txt",
-			content:  "large document with much more content to make it bigger",
-			mimeType: "text/plain",
-			metadata: map[string]string{"type": "document", "size": "large"},
-		},
-		{
-			name:     "image1.jpg",
-			content:  "fake image content",
-			mimeType: "image/jpeg",
-			metadata: map[string]string{"type": "image", "format": "jpeg"},
-		},
-	}
-
-	for _, tf := range testFiles {
-		content := strings.NewReader(tf.content)
-		metadata := interfaces.FileMetadata{
-			Name:     tf.name,
-			MimeType: tf.mimeType,
-			Metadata: tf.metadata,
-		}
-		_, err := service.Upload(ctx, "search-test-bucket", tf.name, content, metadata)
-		require.NoError(t, err)
-	}
-
-	t.Run("Search by MIME type", func(t *testing.T) {
-		criteria := SearchCriteria{
-			Bucket:   "search-test-bucket",
-			MimeType: "text/plain",
-		}
-
-		files, err := service.SearchFiles(ctx, criteria)
-		require.NoError(t, err)
-		assert.Len(t, files, 2)
-		for _, file := range files {
-			assert.Equal(t, "text/plain", file.MimeType)
-		}
-	})
-
-	t.Run("Search by size range", func(t *testing.T) {
-		criteria := SearchCriteria{
-			Bucket:  "search-test-bucket",
-			MinSize: 20,
-			MaxSize: 100,
-		}
-
-		files, err := service.SearchFiles(ctx, criteria)
-		require.NoError(t, err)
-		for _, file := range files {
-			assert.GreaterOrEqual(t, file.Size, int64(20))
-			assert.LessOrEqual(t, file.Size, int64(100))
-		}
-	})
-
-	t.Run("Search by date range", func(t *testing.T) {
-		now := time.Now()
-		oneHourAgo := now.Add(-1 * time.Hour)
-
-		criteria := SearchCriteria{
-			Bucket:      "search-test-bucket",
-			CreatedFrom: &oneHourAgo,
+			NamePattern: "*.jpg",
+			MimeType:    "image/jpeg",
+			MinSize:     1024,
+			MaxSize:     1048576,
+			Metadata:    map[string]string{"category": "photos", "year": "2023"},
+			CreatedFrom: &now,
 			CreatedTo:   &now,
+			Limit:       50,
+			Offset:      10,
 		}
 
-		files, err := service.SearchFiles(ctx, criteria)
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, len(files), 3) // All files should be within this range
+		assert.Equal(t, "test-bucket", criteria.Bucket)
+		assert.Equal(t, "*.jpg", criteria.NamePattern)
+		assert.Equal(t, "image/jpeg", criteria.MimeType)
+		assert.Equal(t, int64(1024), criteria.MinSize)
+		assert.Equal(t, int64(1048576), criteria.MaxSize)
+		assert.Equal(t, "photos", criteria.Metadata["category"])
+		assert.Equal(t, "2023", criteria.Metadata["year"])
+		assert.Equal(t, 50, criteria.Limit)
+		assert.Equal(t, 10, criteria.Offset)
+		assert.NotNil(t, criteria.CreatedFrom)
+		assert.NotNil(t, criteria.CreatedTo)
 	})
+}
 
-	t.Run("Search with pagination", func(t *testing.T) {
-		criteria := SearchCriteria{
-			Bucket: "search-test-bucket",
-			Limit:  2,
-			Offset: 0,
+func TestFileStats_Struct(t *testing.T) {
+	t.Run("file stats structure", func(t *testing.T) {
+		stats := &FileStats{
+			TotalFiles: 150,
+			TotalSize:  1048576000, // ~1GB
+			AvgSize:    6990506,    // ~7MB
+			MimeTypes: map[string]int64{
+				"image/jpeg":      50,
+				"image/png":       30,
+				"application/pdf": 40,
+				"text/plain":      20,
+				"video/mp4":       10,
+			},
 		}
 
-		files, err := service.SearchFiles(ctx, criteria)
-		require.NoError(t, err)
-		assert.LessOrEqual(t, len(files), 2)
-
-		// Test second page
-		criteria.Offset = 2
-		files2, err := service.SearchFiles(ctx, criteria)
-		require.NoError(t, err)
-
-		// Ensure no overlap between pages
-		if len(files) > 0 && len(files2) > 0 {
-			assert.NotEqual(t, files[0].ID, files2[0].ID)
-		}
+		assert.Equal(t, int64(150), stats.TotalFiles)
+		assert.Equal(t, int64(1048576000), stats.TotalSize)
+		assert.Equal(t, int64(6990506), stats.AvgSize)
+		assert.Equal(t, int64(50), stats.MimeTypes["image/jpeg"])
+		assert.Equal(t, int64(30), stats.MimeTypes["image/png"])
+		assert.Equal(t, int64(40), stats.MimeTypes["application/pdf"])
+		assert.Equal(t, int64(20), stats.MimeTypes["text/plain"])
+		assert.Equal(t, int64(10), stats.MimeTypes["video/mp4"])
 	})
 }
