@@ -216,7 +216,13 @@
     - Add RLS policy enforcement for change events
     - _Requirements: 2.2, 2.4_
 
-  - [ ]* 7.4 Write real-time service unit tests
+  - [ ] 7.4 Write real-time service unit tests
+
+
+
+
+
+
     - Test WebSocket connection handling
     - Test channel subscription and message broadcasting
     - Test database change event processing
