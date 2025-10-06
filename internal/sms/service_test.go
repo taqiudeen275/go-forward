@@ -23,6 +23,11 @@ func (m *MockSMSProvider) SendOTP(ctx context.Context, to, otp, appName string) 
 	return args.Error(0)
 }
 
+func (m *MockSMSProvider) SendOTPWithPurpose(ctx context.Context, to, otp, purpose, appName string) error {
+	args := m.Called(ctx, to, otp, purpose, appName)
+	return args.Error(0)
+}
+
 func (m *MockSMSProvider) GetBalance(ctx context.Context) (*BalanceInfo, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
@@ -65,6 +70,45 @@ func TestService_SendOTP_InvalidPhone(t *testing.T) {
 
 	for _, phone := range invalidPhones {
 		err := service.SendOTP(ctx, phone, "123456", "Test App")
+		assert.Error(t, err, "Expected error for phone: %s", phone)
+		assert.Contains(t, err.Error(), "invalid phone number")
+	}
+}
+
+func TestService_SendOTPWithPurpose(t *testing.T) {
+	mockProvider := &MockSMSProvider{}
+	service := NewService(mockProvider, "Test App")
+
+	ctx := context.Background()
+	to := "+233123456789"
+	otp := "123456"
+	purpose := "login"
+	appName := "Test App"
+
+	// Set up mock expectations
+	mockProvider.On("SendOTPWithPurpose", ctx, to, otp, purpose, appName).Return(nil)
+
+	// Call the method
+	err := service.SendOTPWithPurpose(ctx, to, otp, purpose, appName)
+
+	// Assertions
+	assert.NoError(t, err)
+	mockProvider.AssertExpectations(t)
+}
+
+func TestService_SendOTPWithPurpose_InvalidPhone(t *testing.T) {
+	mockProvider := &MockSMSProvider{}
+	service := NewService(mockProvider, "Test App")
+
+	ctx := context.Background()
+	invalidPhones := []string{
+		"",
+		"123",
+		"invalid-phone",
+	}
+
+	for _, phone := range invalidPhones {
+		err := service.SendOTPWithPurpose(ctx, phone, "123456", "login", "Test App")
 		assert.Error(t, err, "Expected error for phone: %s", phone)
 		assert.Contains(t, err.Error(), "invalid phone number")
 	}

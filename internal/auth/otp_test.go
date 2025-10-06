@@ -30,7 +30,7 @@ func TestOTPGenerator_CreateOTP(t *testing.T) {
 	userID := "test-user-id"
 	recipient := "test@example.com"
 
-	otp, err := generator.CreateOTP(&userID, OTPTypeEmail, recipient)
+	otp, err := generator.CreateOTP(&userID, OTPTypeEmail, OTPPurposeVerification, recipient)
 	if err != nil {
 		t.Fatalf("Failed to create OTP: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestOTPGenerator_ValidateCode(t *testing.T) {
 	generator := NewOTPGenerator()
 	userID := "test-user-id"
 
-	otp, err := generator.CreateOTP(&userID, OTPTypeEmail, "test@example.com")
+	otp, err := generator.CreateOTP(&userID, OTPTypeEmail, OTPPurposeVerification, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create OTP: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestOTPGenerator_IsExpired(t *testing.T) {
 	generator := NewOTPGenerator()
 	userID := "test-user-id"
 
-	otp, err := generator.CreateOTP(&userID, OTPTypeEmail, "test@example.com")
+	otp, err := generator.CreateOTP(&userID, OTPTypeEmail, OTPPurposeVerification, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create OTP: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestOTPGenerator_IsMaxAttemptsReached(t *testing.T) {
 	generator := NewOTPGenerator()
 	userID := "test-user-id"
 
-	otp, err := generator.CreateOTP(&userID, OTPTypeEmail, "test@example.com")
+	otp, err := generator.CreateOTP(&userID, OTPTypeEmail, OTPPurposeVerification, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create OTP: %v", err)
 	}

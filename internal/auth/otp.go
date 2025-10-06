@@ -51,7 +51,7 @@ func (g *OTPGenerator) GenerateCode() (string, error) {
 }
 
 // CreateOTP creates a new OTP instance
-func (g *OTPGenerator) CreateOTP(userID *string, otpType OTPType, recipient string) (*OTP, error) {
+func (g *OTPGenerator) CreateOTP(userID *string, otpType OTPType, purpose OTPPurpose, recipient string) (*OTP, error) {
 	code, err := g.GenerateCode()
 	if err != nil {
 		return nil, err
@@ -62,6 +62,7 @@ func (g *OTPGenerator) CreateOTP(userID *string, otpType OTPType, recipient stri
 		UserID:      userID,
 		Code:        code,
 		Type:        otpType,
+		Purpose:     purpose,
 		Recipient:   recipient,
 		ExpiresAt:   time.Now().Add(g.expirationTime),
 		Used:        false,

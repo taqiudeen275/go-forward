@@ -24,6 +24,7 @@ type UserRepositoryInterface interface {
 	CreateOTP(ctx context.Context, otp *OTP) error
 	GetOTP(ctx context.Context, recipient string, otpType OTPType, code string) (*OTP, error)
 	GetLatestOTP(ctx context.Context, recipient string, otpType OTPType) (*OTP, error)
+	GetLatestOTPWithPurpose(ctx context.Context, recipient string, otpType OTPType, purpose OTPPurpose) (*OTP, error)
 	MarkOTPUsed(ctx context.Context, otpID string) error
 	IncrementOTPAttempts(ctx context.Context, otpID string) error
 	CleanupExpiredOTPs(ctx context.Context) error
@@ -74,4 +75,5 @@ type AuthServiceInterface interface {
 	SendOTP(ctx context.Context, req *OTPRequest) error
 	VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, error)
 	LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*AuthResponse, error)
+	RegisterWithOTP(ctx context.Context, req *VerifyOTPRequest, password *string) (*AuthResponse, error)
 }

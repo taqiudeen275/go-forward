@@ -144,3 +144,22 @@ func (a *ArkeselProvider) formatGhanaianNumber(phoneNumber string) string {
 
 	return cleaned
 }
+
+// SendOTPWithPurpose sends an OTP SMS with purpose-specific message using Arkesel API
+func (a *ArkeselProvider) SendOTPWithPurpose(ctx context.Context, to, otp, purpose, appName string) error {
+	var message string
+
+	switch purpose {
+	case "login":
+		message = fmt.Sprintf("🔐 %s Login Code: %s. This code expires in 10 minutes. If you didn't request this, please secure your account immediately.", appName, otp)
+	case "registration":
+		message = fmt.Sprintf("🎉 Welcome to %s! Your registration code is: %s. This code expires in 10 minutes. Complete your signup now!", appName, otp)
+	case "verification":
+		message = fmt.Sprintf("✉️ %s Email Verification: %s. This code expires in 10 minutes. Verify your email to secure your account.", appName, otp)
+	default:
+		// Fallback to generic message
+		message = fmt.Sprintf("Your %s verification code is: %s. This code expires in 10 minutes. Do not share this code with anyone.", appName, otp)
+	}
+
+	return a.SendSMS(ctx, to, message)
+}

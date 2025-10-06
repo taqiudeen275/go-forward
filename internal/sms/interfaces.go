@@ -6,12 +6,14 @@ import "context"
 type SMSProvider interface {
 	SendSMS(ctx context.Context, to, message string) error
 	SendOTP(ctx context.Context, to, otp, appName string) error
+	SendOTPWithPurpose(ctx context.Context, to, otp, purpose, appName string) error
 	GetBalance(ctx context.Context) (*BalanceInfo, error)
 }
 
 // SMSService defines the interface for SMS operations
 type SMSService interface {
 	SendOTP(ctx context.Context, to, otp, appName string) error
+	SendOTPWithPurpose(ctx context.Context, to, otp, purpose, appName string) error
 	SendMessage(ctx context.Context, to, message string) error
 	GetBalance(ctx context.Context) (*BalanceInfo, error)
 }

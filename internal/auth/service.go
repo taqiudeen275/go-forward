@@ -458,19 +458,38 @@ func (s *Service) SendOTP(ctx context.Context, req *OTPRequest) error {
 		return err
 	}
 
+	// Check user existence based on purpose
+	user, err := s.GetUserByIdentifier(ctx, req.Recipient)
+	var userID *string
+
+	switch req.Purpose {
+	case OTPPurposeLogin:
+		// For login, user must exist
+		if err != nil {
+			return fmt.Errorf("user not found")
+		}
+		userID = &user.ID
+
+	case OTPPurposeRegistration:
+		// For registration, user must NOT exist
+		if err == nil {
+			return fmt.Errorf("user already exists")
+		}
+		userID = nil // No user ID for registration
+
+	case OTPPurposeVerification:
+		// For verification, user must exist
+		if err != nil {
+			return fmt.Errorf("user not found")
+		}
+		userID = &user.ID
+	}
+
 	// Create OTP generator with config-based expiration
 	otpGenerator := NewOTPGeneratorWithConfig(6, 10*time.Minute, 3)
 
-	// Check if user exists for the recipient
-	var userID *string
-	user, err := s.GetUserByIdentifier(ctx, req.Recipient)
-	if err == nil {
-		userID = &user.ID
-	}
-	// If user doesn't exist, userID remains nil (for registration OTPs)
-
 	// Generate OTP
-	otp, err := otpGenerator.CreateOTP(userID, req.Type, req.Recipient)
+	otp, err := otpGenerator.CreateOTP(userID, req.Type, req.Purpose, req.Recipient)
 	if err != nil {
 		return fmt.Errorf("failed to generate OTP: %w", err)
 	}
@@ -481,26 +500,26 @@ func (s *Service) SendOTP(ctx context.Context, req *OTPRequest) error {
 		return fmt.Errorf("failed to save OTP: %w", err)
 	}
 
-	// Send OTP via email or SMS
-	if req.Type == OTPTypeEmail {
+	// Send OTP via email or SMS with purpose-specific message
+	switch req.Type {
+	case OTPTypeEmail:
 		if s.emailService != nil {
-			err = s.emailService.SendOTP(ctx, req.Recipient, otp.Code, "Go Forward")
+			err = s.emailService.SendOTPWithPurpose(ctx, req.Recipient, otp.Code, string(req.Purpose), "Go Forward")
 			if err != nil {
 				return fmt.Errorf("failed to send OTP email: %w", err)
 			}
 		} else {
-			// Fallback: log the OTP if email service is not configured
-			fmt.Printf("Email OTP for %s: %s (email service not configured)\n", req.Recipient, otp.Code)
+			fmt.Printf("Email OTP for %s (%s): %s (email service not configured)\n", req.Recipient, req.Purpose, otp.Code)
 		}
-	} else if req.Type == OTPTypeSMS {
+
+	case OTPTypeSMS:
 		if s.smsService != nil {
-			err = s.smsService.SendOTP(ctx, req.Recipient, otp.Code, "Go Forward")
+			err = s.smsService.SendOTPWithPurpose(ctx, req.Recipient, otp.Code, string(req.Purpose), "Go Forward")
 			if err != nil {
 				return fmt.Errorf("failed to send OTP SMS: %w", err)
 			}
 		} else {
-			// Fallback: log the OTP if SMS service is not configured
-			fmt.Printf("SMS OTP for %s: %s (SMS service not configured)\n", req.Recipient, otp.Code)
+			fmt.Printf("SMS OTP for %s (%s): %s (SMS service not configured)\n", req.Recipient, req.Purpose, otp.Code)
 		}
 	}
 
@@ -514,10 +533,20 @@ func (s *Service) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, 
 		return nil, err
 	}
 
-	// Get the latest OTP for this recipient and type
-	otp, err := s.repo.GetLatestOTP(ctx, req.Recipient, req.Type)
+	// Get the latest OTP for this recipient, type, and purpose
+	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, req.Purpose)
 	if err != nil {
 		return nil, fmt.Errorf("invalid or expired OTP")
+	}
+
+	// Verify purpose matches
+	if otp.Purpose != req.Purpose {
+		return nil, fmt.Errorf("OTP purpose mismatch")
+	}
+
+	// Only allow verification endpoint for verification purpose
+	if req.Purpose != OTPPurposeVerification {
+		return nil, fmt.Errorf("use appropriate endpoint for %s OTP", req.Purpose)
 	}
 
 	// Increment attempts first
@@ -549,9 +578,10 @@ func (s *Service) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, 
 		}
 
 		// Mark the appropriate field as verified
-		if req.Type == OTPTypeEmail {
+		switch req.Type {
+		case OTPTypeEmail:
 			err = s.VerifyEmail(ctx, user.ID)
-		} else if req.Type == OTPTypeSMS {
+		case OTPTypeSMS:
 			err = s.VerifyPhone(ctx, user.ID)
 		}
 
@@ -562,20 +592,148 @@ func (s *Service) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, 
 		return user, nil
 	}
 
-	// For registration OTPs, return nil user (caller should handle registration)
 	return nil, nil
 }
 
 // LoginWithOTP authenticates a user using OTP and returns JWT tokens
 func (s *Service) LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*AuthResponse, error) {
-	// Verify OTP and get user
-	user, err := s.VerifyOTP(ctx, req)
+	// Only allow login purpose for this endpoint
+	if req.Purpose != OTPPurposeLogin {
+		return nil, fmt.Errorf("only login OTPs are allowed for this endpoint")
+	}
+
+	// Get the latest OTP for this recipient, type, and purpose
+	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, req.Purpose)
+	if err != nil {
+		return nil, fmt.Errorf("invalid or expired OTP")
+	}
+
+	// Verify purpose matches
+	if otp.Purpose != req.Purpose {
+		return nil, fmt.Errorf("OTP purpose mismatch")
+	}
+
+	// Increment attempts first
+	err = s.repo.IncrementOTPAttempts(ctx, otp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update OTP attempts: %w", err)
+	}
+
+	// Create OTP generator for validation
+	otpGenerator := NewOTPGeneratorWithConfig(6, 10*time.Minute, 3)
+
+	// Validate the OTP code
+	err = otpGenerator.ValidateCode(otp, req.Code)
 	if err != nil {
 		return nil, err
 	}
 
-	if user == nil {
-		return nil, fmt.Errorf("no user found for this OTP")
+	// Mark OTP as used
+	err = s.repo.MarkOTPUsed(ctx, otp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mark OTP as used: %w", err)
+	}
+
+	// Get user (must exist for login)
+	if otp.UserID == nil {
+		return nil, fmt.Errorf("no user associated with this OTP")
+	}
+
+	user, err := s.GetUserByID(ctx, *otp.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	// Generate JWT tokens
+	tokenPair, err := s.jwtManager.GenerateTokenPair(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	return &AuthResponse{
+		User:         user,
+		AccessToken:  tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		ExpiresIn:    int(tokenPair.ExpiresIn),
+	}, nil
+}
+
+// RegisterWithOTP creates a new user using OTP verification and returns JWT tokens
+func (s *Service) RegisterWithOTP(ctx context.Context, req *VerifyOTPRequest, password *string) (*AuthResponse, error) {
+	// Only allow registration purpose for this endpoint
+	if req.Purpose != OTPPurposeRegistration {
+		return nil, fmt.Errorf("only registration OTPs are allowed for this endpoint")
+	}
+
+	// Get the latest OTP for this recipient, type, and purpose
+	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, req.Purpose)
+	if err != nil {
+		return nil, fmt.Errorf("invalid or expired OTP")
+	}
+
+	// Verify purpose matches
+	if otp.Purpose != req.Purpose {
+		return nil, fmt.Errorf("OTP purpose mismatch")
+	}
+
+	// Increment attempts first
+	err = s.repo.IncrementOTPAttempts(ctx, otp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update OTP attempts: %w", err)
+	}
+
+	// Create OTP generator for validation
+	otpGenerator := NewOTPGeneratorWithConfig(6, 10*time.Minute, 3)
+
+	// Validate the OTP code
+	err = otpGenerator.ValidateCode(otp, req.Code)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mark OTP as used
+	err = s.repo.MarkOTPUsed(ctx, otp.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mark OTP as used: %w", err)
+	}
+
+	// Create user registration request
+	createReq := &CreateUserRequest{
+		Metadata: make(map[string]interface{}),
+	}
+
+	// Set the verified field based on OTP type
+	switch req.Type {
+	case OTPTypeEmail:
+		createReq.Email = &req.Recipient
+	case OTPTypeSMS:
+		createReq.Phone = &req.Recipient
+	}
+
+	// Set password if provided, otherwise generate a random one
+	if password != nil && *password != "" {
+		createReq.Password = *password
+	} else {
+		// Generate a random password for phone-only registration
+		createReq.Password = generateSecureToken()[:16]
+	}
+
+	// Create user
+	user, err := s.CreateUser(ctx, createReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Mark the appropriate field as verified since OTP was successful
+	switch req.Type {
+	case OTPTypeEmail:
+		err = s.VerifyEmail(ctx, user.ID)
+	case OTPTypeSMS:
+		err = s.VerifyPhone(ctx, user.ID)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to mark as verified: %w", err)
 	}
 
 	// Generate JWT tokens

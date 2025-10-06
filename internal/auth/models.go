@@ -93,28 +93,39 @@ const (
 
 // OTP represents a one-time password
 type OTP struct {
-	ID          string    `json:"id" db:"id"`
-	UserID      *string   `json:"user_id" db:"user_id"` // Can be null for registration OTPs
-	Code        string    `json:"code" db:"code"`
-	Type        OTPType   `json:"type" db:"type"`
-	Recipient   string    `json:"recipient" db:"recipient"` // email or phone number
-	ExpiresAt   time.Time `json:"expires_at" db:"expires_at"`
-	Used        bool      `json:"used" db:"used"`
-	Attempts    int       `json:"attempts" db:"attempts"`
-	MaxAttempts int       `json:"max_attempts" db:"max_attempts"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID          string     `json:"id" db:"id"`
+	UserID      *string    `json:"user_id" db:"user_id"` // Can be null for registration OTPs
+	Code        string     `json:"code" db:"code"`
+	Type        OTPType    `json:"type" db:"type"`
+	Purpose     OTPPurpose `json:"purpose" db:"purpose"`
+	Recipient   string     `json:"recipient" db:"recipient"` // email or phone number
+	ExpiresAt   time.Time  `json:"expires_at" db:"expires_at"`
+	Used        bool       `json:"used" db:"used"`
+	Attempts    int        `json:"attempts" db:"attempts"`
+	MaxAttempts int        `json:"max_attempts" db:"max_attempts"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
 }
+
+// OTPPurpose represents the purpose of an OTP
+type OTPPurpose string
+
+const (
+	OTPPurposeLogin        OTPPurpose = "login"
+	OTPPurposeRegistration OTPPurpose = "registration"
+	OTPPurposeVerification OTPPurpose = "verification"
+)
 
 // OTPRequest represents a request to send an OTP
 type OTPRequest struct {
-	Type      OTPType `json:"type" validate:"required,oneof=email sms"`
-	Recipient string  `json:"recipient" validate:"required"`
-	Purpose   string  `json:"purpose,omitempty"` // login, registration, verification
+	Type      OTPType    `json:"type" validate:"required,oneof=email sms"`
+	Recipient string     `json:"recipient" validate:"required"`
+	Purpose   OTPPurpose `json:"purpose" validate:"required,oneof=login registration verification"`
 }
 
 // VerifyOTPRequest represents a request to verify an OTP
 type VerifyOTPRequest struct {
-	Type      OTPType `json:"type" validate:"required,oneof=email sms"`
-	Recipient string  `json:"recipient" validate:"required"`
-	Code      string  `json:"code" validate:"required,len=6"`
+	Type      OTPType    `json:"type" validate:"required,oneof=email sms"`
+	Recipient string     `json:"recipient" validate:"required"`
+	Code      string     `json:"code" validate:"required,len=6"`
+	Purpose   OTPPurpose `json:"purpose" validate:"required,oneof=login registration verification"`
 }

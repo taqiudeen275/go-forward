@@ -98,3 +98,17 @@ func (s *Service) FormatPhoneNumber(phone string) string {
 
 	return cleanPhone
 }
+
+// SendOTPWithPurpose sends an OTP SMS message with purpose-specific content
+func (s *Service) SendOTPWithPurpose(ctx context.Context, to, otp, purpose, appName string) error {
+	if appName == "" {
+		appName = s.appName
+	}
+
+	// Validate phone number
+	if err := s.validatePhoneNumber(to); err != nil {
+		return fmt.Errorf("invalid phone number: %w", err)
+	}
+
+	return s.provider.SendOTPWithPurpose(ctx, to, otp, purpose, appName)
+}

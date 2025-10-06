@@ -32,6 +32,7 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 		auth.POST("/otp/send", h.SendOTP)
 		auth.POST("/otp/verify", h.VerifyOTP)
 		auth.POST("/otp/login", h.LoginWithOTP)
+		auth.POST("/otp/register", h.RegisterWithOTP)
 	}
 }
 
@@ -182,4 +183,25 @@ func (h *Handler) LoginWithOTP(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, authResponse)
+}
+
+// RegisterWithOTP handles OTP-based user registration
+func (h *Handler) RegisterWithOTP(c *gin.Context) {
+	var req struct {
+		VerifyOTPRequest
+		Password *string `json:"password,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	authResponse, err := h.service.RegisterWithOTP(c.Request.Context(), &req.VerifyOTPRequest, req.Password)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, authResponse)
 }
