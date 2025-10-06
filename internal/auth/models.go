@@ -95,7 +95,7 @@ const (
 type OTP struct {
 	ID          string     `json:"id" db:"id"`
 	UserID      *string    `json:"user_id" db:"user_id"` // Can be null for registration OTPs
-	Code        string     `json:"code" db:"code"`
+	CodeHash    string     `json:"-" db:"code_hash"`     // Hashed OTP code (never expose in JSON)
 	Type        OTPType    `json:"type" db:"type"`
 	Purpose     OTPPurpose `json:"purpose" db:"purpose"`
 	Recipient   string     `json:"recipient" db:"recipient"` // email or phone number
@@ -104,6 +104,9 @@ type OTP struct {
 	Attempts    int        `json:"attempts" db:"attempts"`
 	MaxAttempts int        `json:"max_attempts" db:"max_attempts"`
 	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+
+	// Transient field for plain text code (not stored in DB)
+	Code string `json:"code,omitempty" db:"-"`
 }
 
 // OTPPurpose represents the purpose of an OTP

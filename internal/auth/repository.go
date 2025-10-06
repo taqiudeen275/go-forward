@@ -590,14 +590,14 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, id string, hashedPa
 // CreateOTP creates a new OTP in the database
 func (r *UserRepository) CreateOTP(ctx context.Context, otp *OTP) error {
 	query := `
-		INSERT INTO otps (id, user_id, code, type, purpose, recipient, expires_at, used, attempts, max_attempts, created_at)
+		INSERT INTO otps (id, user_id, code_hash, type, purpose, recipient, expires_at, used, attempts, max_attempts, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 
 	err := r.db.Exec(ctx, query,
 		otp.ID,
 		otp.UserID,
-		otp.Code,
+		otp.CodeHash, // Store hash instead of plain text
 		string(otp.Type),
 		string(otp.Purpose),
 		otp.Recipient,
@@ -728,7 +728,7 @@ func (r *UserRepository) CleanupExpiredOTPs(ctx context.Context) error {
 // GetLatestOTPWithPurpose retrieves the latest OTP for a recipient, type, and purpose
 func (r *UserRepository) GetLatestOTPWithPurpose(ctx context.Context, recipient string, otpType OTPType, purpose OTPPurpose) (*OTP, error) {
 	query := `
-		SELECT id, user_id, code, type, purpose, recipient, expires_at, used, attempts, max_attempts, created_at
+		SELECT id, user_id, code_hash, type, purpose, recipient, expires_at, used, attempts, max_attempts, created_at
 		FROM otps
 		WHERE recipient = $1 AND type = $2 AND purpose = $3
 		ORDER BY created_at DESC
@@ -741,7 +741,7 @@ func (r *UserRepository) GetLatestOTPWithPurpose(ctx context.Context, recipient 
 	err := r.db.QueryRow(ctx, query, recipient, string(otpType), string(purpose)).Scan(
 		&otp.ID,
 		&otp.UserID,
-		&otp.Code,
+		&otp.CodeHash, // Retrieve hash instead of plain text
 		&otpTypeStr,
 		&purposeStr,
 		&otp.Recipient,

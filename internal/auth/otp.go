@@ -1,9 +1,7 @@
 package auth
 
 import (
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +12,7 @@ type OTPGenerator struct {
 	codeLength     int
 	expirationTime time.Duration
 	maxAttempts    int
+	hasher         *OTPHasher
 }
 
 // NewOTPGenerator creates a new OTP generator with default settings
@@ -22,6 +21,7 @@ func NewOTPGenerator() *OTPGenerator {
 		codeLength:     6,
 		expirationTime: 10 * time.Minute,
 		maxAttempts:    3,
+		hasher:         NewOTPHasher(),
 	}
 }
 
@@ -31,36 +31,33 @@ func NewOTPGeneratorWithConfig(codeLength int, expirationTime time.Duration, max
 		codeLength:     codeLength,
 		expirationTime: expirationTime,
 		maxAttempts:    maxAttempts,
+		hasher:         NewOTPHasher(),
 	}
 }
 
-// GenerateCode generates a random numeric OTP code
+// GenerateCode generates a cryptographically secure random numeric OTP code
 func (g *OTPGenerator) GenerateCode() (string, error) {
-	// Generate a random number with the specified length
-	max := new(big.Int)
-	max.Exp(big.NewInt(10), big.NewInt(int64(g.codeLength)), nil)
-
-	n, err := rand.Int(rand.Reader, max)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate random number: %w", err)
-	}
-
-	// Format with leading zeros if necessary
-	format := fmt.Sprintf("%%0%dd", g.codeLength)
-	return fmt.Sprintf(format, n), nil
+	return g.hasher.GenerateSecureOTP(g.codeLength)
 }
 
-// CreateOTP creates a new OTP instance
+// CreateOTP creates a new OTP instance with hashed code
 func (g *OTPGenerator) CreateOTP(userID *string, otpType OTPType, purpose OTPPurpose, recipient string) (*OTP, error) {
 	code, err := g.GenerateCode()
 	if err != nil {
 		return nil, err
 	}
 
+	// Hash the OTP code for secure storage
+	codeHash, err := g.hasher.HashOTP(code)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash OTP: %w", err)
+	}
+
 	return &OTP{
 		ID:          uuid.New().String(),
 		UserID:      userID,
-		Code:        code,
+		Code:        code,     // Plain text for immediate use (not stored in DB)
+		CodeHash:    codeHash, // Hashed version for DB storage
 		Type:        otpType,
 		Purpose:     purpose,
 		Recipient:   recipient,
@@ -82,7 +79,7 @@ func (g *OTPGenerator) IsMaxAttemptsReached(otp *OTP) bool {
 	return otp.Attempts >= otp.MaxAttempts
 }
 
-// ValidateCode validates an OTP code
+// ValidateCode validates an OTP code against its hash
 func (g *OTPGenerator) ValidateCode(otp *OTP, code string) error {
 	if otp.Used {
 		return fmt.Errorf("OTP has already been used")
@@ -96,7 +93,13 @@ func (g *OTPGenerator) ValidateCode(otp *OTP, code string) error {
 		return fmt.Errorf("maximum attempts reached")
 	}
 
-	if otp.Code != code {
+	// Verify the code against the stored hash
+	valid, err := g.hasher.VerifyOTP(code, otp.CodeHash)
+	if err != nil {
+		return fmt.Errorf("failed to verify OTP: %w", err)
+	}
+
+	if !valid {
 		return fmt.Errorf("invalid OTP code")
 	}
 

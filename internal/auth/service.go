@@ -16,12 +16,13 @@ import (
 
 // Service handles authentication business logic
 type Service struct {
-	repo         UserRepositoryInterface
-	hasher       *PasswordHasher
-	validator    *Validator
-	jwtManager   *JWTManager
-	emailService email.EmailService
-	smsService   sms.SMSService
+	repo            UserRepositoryInterface
+	hasher          *PasswordHasher
+	validator       *Validator
+	jwtManager      *JWTManager
+	emailService    email.EmailService
+	smsService      sms.SMSService
+	securityMonitor *SecurityMonitor
 }
 
 // NewService creates a new authentication service
@@ -30,12 +31,13 @@ func NewService(db *database.DB) *Service {
 	jwtManager := NewJWTManager("default-secret-key", 24*time.Hour, 7*24*time.Hour)
 
 	return &Service{
-		repo:         NewUserRepository(db),
-		hasher:       NewPasswordHasher(),
-		validator:    NewValidator(),
-		jwtManager:   jwtManager,
-		emailService: nil, // Will be set via SetEmailService
-		smsService:   nil, // Will be set via SetSMSService
+		repo:            NewUserRepository(db),
+		hasher:          NewPasswordHasher(),
+		validator:       NewValidator(),
+		jwtManager:      jwtManager,
+		emailService:    nil, // Will be set via SetEmailService
+		smsService:      nil, // Will be set via SetSMSService
+		securityMonitor: NewSecurityMonitor(),
 	}
 }
 
@@ -44,12 +46,13 @@ func NewServiceWithConfig(db *database.DB, jwtSecret string, accessExpiration, r
 	jwtManager := NewJWTManager(jwtSecret, accessExpiration, refreshExpiration)
 
 	return &Service{
-		repo:         NewUserRepository(db),
-		hasher:       NewPasswordHasher(),
-		validator:    NewValidator(),
-		jwtManager:   jwtManager,
-		emailService: nil, // Will be set via SetEmailService
-		smsService:   nil, // Will be set via SetSMSService
+		repo:            NewUserRepository(db),
+		hasher:          NewPasswordHasher(),
+		validator:       NewValidator(),
+		jwtManager:      jwtManager,
+		emailService:    nil, // Will be set via SetEmailService
+		smsService:      nil, // Will be set via SetSMSService
+		securityMonitor: NewSecurityMonitor(),
 	}
 }
 
@@ -507,6 +510,16 @@ func (s *Service) SendOTP(ctx context.Context, req *OTPRequest) error {
 		return err
 	}
 
+	// Check rate limiting
+	if err := s.securityMonitor.CheckOTPRequestRate(req.Recipient); err != nil {
+		return err
+	}
+
+	// Check if recipient is locked out
+	if s.securityMonitor.IsLocked(req.Recipient) {
+		return fmt.Errorf("account temporarily locked due to suspicious activity")
+	}
+
 	// Check user existence based on purpose
 	user, err := s.GetUserByIdentifier(ctx, req.Recipient)
 	var userID *string
@@ -610,8 +623,13 @@ func (s *Service) VerifyOTPWithPurpose(ctx context.Context, req *VerifyOTPReques
 	// Validate the OTP code
 	err = otpGenerator.ValidateCode(otp, req.Code)
 	if err != nil {
+		// Record failed attempt for security monitoring
+		s.securityMonitor.RecordFailedAttempt(req.Recipient)
 		return nil, err
 	}
+
+	// Clear failed attempts on successful verification
+	s.securityMonitor.ClearFailedAttempts(req.Recipient)
 
 	// Mark OTP as used
 	err = s.repo.MarkOTPUsed(ctx, otp.ID)
