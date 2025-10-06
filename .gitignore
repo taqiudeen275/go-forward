@@ -1,1 +1,4 @@
 /release/*
+server.exe
+migrate.exe
+config.yaml
