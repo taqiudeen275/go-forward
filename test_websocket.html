@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoForward Realtime WebSocket</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+            background: #0f0f23;
+            color: #e4e4e7;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #27272a;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .brand-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .brand h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #fafafa;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            background: #18181b;
+            border: 1px solid #27272a;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+
+        .status-dot.connected {
+            background: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+        }
+
+        .status-dot.connecting {
+            background: #f59e0b;
+            animation: pulse 2s infinite;
+        }
+
+        .status-text {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #a1a1aa;
+        }
+
+        /* Main Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 1.5rem;
+            height: calc(100vh - 160px);
+        }
+
+        /* Control Panel */
+        .control-panel {
+            background: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .section-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #71717a;
+            margin-bottom: 0.75rem;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #27272a;
+            color: #fafafa;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #3f3f46;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+        }
+
+        .message-form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .message-input {
+            width: 100%;
+            padding: 0.75rem;
+            background: #09090b;
+            border: 1px solid #27272a;
+            border-radius: 8px;
+            color: #fafafa;
+            font-size: 0.875rem;
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+
+        .message-input:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+
+        .char-counter {
+            position: absolute;
+            bottom: 0.5rem;
+            right: 0.75rem;
+            font-size: 0.75rem;
+            color: #52525b;
+        }
+
+        .connection-details {
+            margin-top: auto;
+            padding-top: 1.5rem;
+            border-top: 1px solid #27272a;
+        }
+
+        .detail-item {
+            margin-bottom: 1rem;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            color: #71717a;
+            margin-bottom: 0.25rem;
+        }
+
+        .detail-value {
+            font-family: 'Monaco', monospace;
+            font-size: 0.75rem;
+            color: #a1a1aa;
+            background: #09090b;
+            padding: 0.5rem;
+            border-radius: 6px;
+            word-break: break-all;
+        }
+
+        /* Messages Panel */
+        .messages-panel {
+            background: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .messages-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #27272a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .messages-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #fafafa;
+        }
+
+        .message-count {
+            font-size: 0.75rem;
+            color: #71717a;
+            background: #27272a;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #52525b;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .message-card {
+            background: #09090b;
+            border: 1px solid #27272a;
+            border-radius: 8px;
+            padding: 1rem;
+            border-left: 3px solid;
+        }
+
+        .message-card.system {
+            border-left-color: #3b82f6;
+        }
+
+        .message-card.sent {
+            border-left-color: #22c55e;
+        }
+
+        .message-card.received {
+            border-left-color: #8b5cf6;
+        }
+
+        .message-card.error {
+            border-left-color: #ef4444;
+        }
+
+        .message-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.75rem;
+            color: #71717a;
+        }
+
+        .message-type {
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .message-time {
+            margin-left: auto;
+        }
+
+        .message-content {
+            font-size: 0.875rem;
+            color: #e4e4e7;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Scrollbar */
+        .messages-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .messages-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb {
+            background: #27272a;
+            border-radius: 3px;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb:hover {
+            background: #3f3f46;
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+
+            .control-panel {
+                order: 1;
+            }
+
+            .messages-panel {
+                order: 2;
+                min-height: 500px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fas fa-bolt"></i>
+                </div>
+                <div>
+                    <h1>GoForward Realtime</h1>
+                    <p style="font-size: 0.875rem; color: #71717a;">WebSocket Test Interface</p>
+                </div>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span class="status-text" id="statusText">Disconnected</span>
+            </div>
+        </header>
+
+        <div class="main-grid">
+            <aside class="control-panel">
+                <div>
+                    <div class="section-title">Connection</div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="connect()" id="connectBtn">
+                            <i class="fas fa-plug"></i>
+                            Connect
+                        </button>
+                        <button class="btn btn-danger" onclick="disconnect()" id="disconnectBtn" disabled>
+                            <i class="fas fa-times"></i>
+                            Disconnect
+                        </button>
+                        <button class="btn" onclick="clearMessages()">
+                            <i class="fas fa-trash"></i>
+                            Clear Messages
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="section-title">Send Message</div>
+                    <div class="message-form">
+                        <div class="input-wrapper">
+                            <textarea 
+                                class="message-input" 
+                                id="messageInput" 
+                                placeholder="Type your message..."
+                                maxlength="500"
+                            ></textarea>
+                            <span class="char-counter" id="charCounter">0/500</span>
+                        </div>
+                        <button class="btn btn-primary" onclick="sendMessage()" id="sendBtn" disabled>
+                            <i class="fas fa-paper-plane"></i>
+                            Send Message
+                        </button>
+                    </div>
+                </div>
+
+                <div class="connection-details">
+                    <div class="section-title">Connection Details</div>
+                    <div class="detail-item">
+                        <div class="detail-label">Endpoint</div>
+                        <div class="detail-value">ws://localhost:8080/realtime/channels/test-channel/ws</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Channel</div>
+                        <div class="detail-value">test-channel</div>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="messages-panel">
+                <div class="messages-header">
+                    <div class="messages-title">
+                        <i class="fas fa-comments"></i> Messages
+                    </div>
+                    <div class="message-count">
+                        <span id="messageCount">0</span> messages
+                    </div>
+                </div>
+                <div class="messages-container" id="messagesContainer">
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <p>No messages yet</p>
+                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">Connect to start receiving messages</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let messageCount = 0;
+        const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYTQyMTg5NDctNGMzNy00NDQyLTk2YTItYTg0ODQ1M2E3NmE1IiwiZW1haWwiOiJ0YXFpdWRlZW5Ab2ppLm9uZSIsInVzZXJuYW1lIjoiQVRTIiwicGhvbmUiOiIwMjA2MDk1MDI0IiwibWV0YWRhdGEiOnsiZmlyc3RfbmFtZSI6IkFiZHVsYWkiLCJsYXN0X25hbWUiOiJUYXFpdWRlZW4ifSwidG9rZW5fdHlwZSI6ImFjY2VzcyIsImlzcyI6ImdvLWZvcndhcmQiLCJzdWIiOiJhNDIxODk0Ny00YzM3LTQ0NDItOTZhMi1hODQ4NDUzYTc2YTUiLCJleHAiOjE3NTk4NTg4MjEsIm5iZiI6MTc1OTc3MjQyMSwiaWF0IjoxNzU5NzcyNDIxLCJqdGkiOiI4ODFiODI0Mi03OTdkLTQ5Y2UtYjdmNy1hYzgyMDc2NzY5MjUifQ.rlFa3OJLBl1LS2qtjmNIzrtlyF7aXVOWMLPsKYIagto';
+
+        function connect() {
+            const wsUrl = `ws://localhost:8080/realtime/channels/test-channel/ws?token=${token}`;
+            ws = new WebSocket(wsUrl);
+
+            updateStatus('connecting');
+
+            ws.onopen = function () {
+                updateStatus('connected');
+                addMessage('system', 'Connected to WebSocket successfully!');
+            };
+
+            ws.onmessage = function (event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    addMessage('received', JSON.stringify(message, null, 2));
+                } catch (e) {
+                    addMessage('received', event.data);
+                }
+            };
+
+            ws.onclose = function (event) {
+                updateStatus('disconnected');
+                const reason = event.reason || 'Connection closed';
+                addMessage('error', `WebSocket connection closed: ${reason}`);
+            };
+
+            ws.onerror = function (error) {
+                updateStatus('disconnected');
+                addMessage('error', `WebSocket error: ${error.message || 'Unknown error'}`);
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close(1000, 'User initiated disconnect');
+            }
+        }
+
+        function sendMessage() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const input = document.getElementById('messageInput');
+                const messageText = input.value.trim();
+
+                if (!messageText) {
+                    addMessage('error', 'Cannot send empty message');
+                    return;
+                }
+
+                const message = {
+                    type: 'broadcast',
+                    event: 'test_message',
+                    payload: {
+                        message: messageText,
+                        timestamp: new Date().toISOString(),
+                        user: 'Test User'
+                    }
+                };
+
+                ws.send(JSON.stringify(message));
+                addMessage('sent', messageText);
+                input.value = '';
+                updateCharCount();
+            } else {
+                addMessage('error', 'WebSocket is not connected. Please connect first.');
+            }
+        }
+
+        function addMessage(type, content) {
+            const container = document.getElementById('messagesContainer');
+            
+            const emptyState = container.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const messageCard = document.createElement('div');
+            messageCard.className = `message-card ${type}`;
+
+            const timestamp = new Date().toLocaleTimeString();
+
+            messageCard.innerHTML = `
+                <div class="message-meta">
+                    <span class="message-type">${type}</span>
+                    <span class="message-time">${timestamp}</span>
+                </div>
+                <div class="message-content">${content}</div>
+            `;
+
+            container.appendChild(messageCard);
+            container.scrollTop = container.scrollHeight;
+
+            messageCount++;
+            updateMessageCount();
+        }
+
+        function clearMessages() {
+            const container = document.getElementById('messagesContainer');
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-inbox"></i>
+                    <p>No messages yet</p>
+                    <p style="font-size: 0.875rem; margin-top: 0.5rem;">Connect to start receiving messages</p>
+                </div>
+            `;
+            messageCount = 0;
+            updateMessageCount();
+        }
+
+        function updateStatus(state) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const sendBtn = document.getElementById('sendBtn');
+
+            statusDot.className = 'status-dot';
+
+            switch (state) {
+                case 'connected':
+                    statusDot.classList.add('connected');
+                    statusText.textContent = 'Connected';
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    sendBtn.disabled = false;
+                    break;
+                case 'connecting':
+                    statusDot.classList.add('connecting');
+                    statusText.textContent = 'Connecting...';
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    sendBtn.disabled = true;
+                    break;
+                case 'disconnected':
+                    statusText.textContent = 'Disconnected';
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    sendBtn.disabled = true;
+                    break;
+            }
+        }
+
+        function updateCharCount() {
+            const input = document.getElementById('messageInput');
+            const counter = document.getElementById('charCounter');
+            counter.textContent = `${input.value.length}/500`;
+        }
+
+        function updateMessageCount() {
+            document.getElementById('messageCount').textContent = messageCount;
+        }
+
+        document.getElementById('messageInput').addEventListener('input', updateCharCount);
+        document.getElementById('messageInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        updateStatus('disconnected');
+    </script>
+</body>
+
+</html>

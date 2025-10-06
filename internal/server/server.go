@@ -82,8 +82,11 @@ func New(cfg *config.Config, db *database.DB) *Server {
 	metaServiceAdapter := database.NewMetaServiceAdapter(metaService)
 	apiService := api.NewService(metaServiceAdapter)
 
-	// Initialize realtime service (pass nil for auth service for now due to interface mismatch)
-	realtimeService := realtime.NewService(nil, db.Pool)
+	// Create auth service adapter for realtime service
+	authServiceAdapter := auth.NewServiceAdapter(authService)
+
+	// Initialize realtime service with auth service adapter
+	realtimeService := realtime.NewService(authServiceAdapter, db.Pool)
 	realtimeHandlers := realtime.NewHandlers(realtimeService)
 
 	// Initialize storage service

@@ -12,6 +12,7 @@ import (
 	"github.com/taqiudeen275/go-foward/internal/database"
 	"github.com/taqiudeen275/go-foward/internal/email"
 	"github.com/taqiudeen275/go-foward/internal/sms"
+	"github.com/taqiudeen275/go-foward/pkg/interfaces"
 )
 
 // Service handles authentication business logic
@@ -365,6 +366,25 @@ func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*AuthR
 // ValidateToken validates a JWT token and returns the claims
 func (s *Service) ValidateToken(ctx context.Context, token string) (*Claims, error) {
 	return s.jwtManager.ValidateAccessToken(token)
+}
+
+// ValidateTokenInterface validates a JWT token and returns interface claims
+func (s *Service) ValidateTokenInterface(ctx context.Context, token string) (*interfaces.Claims, error) {
+	claims, err := s.jwtManager.ValidateAccessToken(token)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to interface claims
+	interfaceClaims := &interfaces.Claims{
+		UserID:    claims.UserID,
+		Email:     claims.Email,
+		Metadata:  claims.Metadata,
+		IssuedAt:  claims.IssuedAt.Time,
+		ExpiresAt: claims.ExpiresAt.Time,
+	}
+
+	return interfaceClaims, nil
 }
 
 // GetJWTManager returns the JWT manager (for middleware usage)
