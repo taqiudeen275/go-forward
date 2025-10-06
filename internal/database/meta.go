@@ -14,6 +14,13 @@ type MetaService struct {
 	db *DB
 }
 
+// quoteLiteral safely quotes a string literal for SQL
+func quoteLiteral(s string) string {
+	// Escape single quotes by doubling them and wrap in single quotes
+	escaped := strings.ReplaceAll(s, "'", "''")
+	return fmt.Sprintf("'%s'", escaped)
+}
+
 // NewMetaService creates a new database meta service
 func NewMetaService(db *DB) *MetaService {
 	return &MetaService{
@@ -92,14 +99,14 @@ func (ms *MetaService) GetTables(ctx context.Context, schemas ...string) ([]*Tab
 			t.table_name,
 			t.table_schema,
 			COALESCE(obj_description(c.oid), '') as comment,
-			CASE WHEN p.tablename IS NOT NULL THEN true ELSE false END as rls_enabled
+			CASE WHEN COUNT(p.policyname) > 0 THEN true ELSE false END as rls_enabled
 		FROM information_schema.tables t
 		LEFT JOIN pg_class c ON c.relname = t.table_name
 		LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
-		LEFT JOIN pg_policy p ON p.tablename = t.table_name
+		LEFT JOIN pg_policies p ON p.tablename = t.table_name AND p.schemaname = t.table_schema
 		WHERE t.table_type = 'BASE TABLE'
 		AND t.table_schema IN (` + strings.Join(schemaPlaceholders, ",") + `)
-		GROUP BY t.table_name, t.table_schema, c.oid, p.tablename
+		GROUP BY t.table_name, t.table_schema, c.oid
 		ORDER BY t.table_schema, t.table_name`
 
 	rows, err := ms.db.Query(ctx, query, schemaArgs...)
@@ -327,9 +334,9 @@ func (ms *MetaService) getTableConstraints(ctx context.Context, schema, tableNam
 			tc.constraint_name,
 			tc.constraint_type,
 			tc.table_name,
-			array_agg(kcu.column_name ORDER BY kcu.ordinal_position) as columns,
+			COALESCE(string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position), '') as columns,
 			COALESCE(ccu.table_name, '') as referenced_table,
-			COALESCE(array_agg(ccu.column_name ORDER BY kcu.ordinal_position) FILTER (WHERE ccu.column_name IS NOT NULL), ARRAY[]::text[]) as referenced_columns,
+			COALESCE(string_agg(ccu.column_name, ',' ORDER BY kcu.ordinal_position), '') as referenced_columns,
 			COALESCE(rc.update_rule, '') as on_update,
 			COALESCE(rc.delete_rule, '') as on_delete,
 			COALESCE(cc.check_clause, '') as definition
@@ -359,15 +366,15 @@ func (ms *MetaService) getTableConstraints(ctx context.Context, schema, tableNam
 	var constraints []*Constraint
 	for rows.Next() {
 		var constraint Constraint
-		var columns, referencedColumns []string
+		var columnsStr, referencedColumnsStr string
 
 		err := rows.Scan(
 			&constraint.Name,
 			&constraint.Type,
 			&constraint.TableName,
-			&columns,
+			&columnsStr,
 			&constraint.ReferencedTable,
-			&referencedColumns,
+			&referencedColumnsStr,
 			&constraint.OnUpdate,
 			&constraint.OnDelete,
 			&constraint.Definition,
@@ -376,8 +383,18 @@ func (ms *MetaService) getTableConstraints(ctx context.Context, schema, tableNam
 			return nil, fmt.Errorf("failed to scan constraint row: %w", err)
 		}
 
-		constraint.Columns = columns
-		constraint.ReferencedColumns = referencedColumns
+		// Convert comma-separated strings to slices
+		if columnsStr != "" {
+			constraint.Columns = strings.Split(columnsStr, ",")
+		} else {
+			constraint.Columns = []string{}
+		}
+
+		if referencedColumnsStr != "" {
+			constraint.ReferencedColumns = strings.Split(referencedColumnsStr, ",")
+		} else {
+			constraint.ReferencedColumns = []string{}
+		}
 		constraints = append(constraints, &constraint)
 	}
 
@@ -489,8 +506,8 @@ func (ms *MetaService) CreateTable(ctx context.Context, tableDef *TableDefinitio
 
 	// Add table comment if specified
 	if tableDef.Comment != "" {
-		commentQuery := fmt.Sprintf("COMMENT ON TABLE %s.%s IS $1", tableDef.Schema, tableDef.Name)
-		if err := ms.db.Exec(ctx, commentQuery, tableDef.Comment); err != nil {
+		commentQuery := fmt.Sprintf("COMMENT ON TABLE %q.%q IS %s", tableDef.Schema, tableDef.Name, quoteLiteral(tableDef.Comment))
+		if err := ms.db.Exec(ctx, commentQuery); err != nil {
 			return fmt.Errorf("failed to add table comment: %w", err)
 		}
 	}
@@ -498,8 +515,8 @@ func (ms *MetaService) CreateTable(ctx context.Context, tableDef *TableDefinitio
 	// Add column comments if specified
 	for _, col := range tableDef.Columns {
 		if col.Comment != "" {
-			commentQuery := fmt.Sprintf("COMMENT ON COLUMN %s.%s.%s IS $1", tableDef.Schema, tableDef.Name, col.Name)
-			if err := ms.db.Exec(ctx, commentQuery, col.Comment); err != nil {
+			commentQuery := fmt.Sprintf("COMMENT ON COLUMN %q.%q.%q IS %s", tableDef.Schema, tableDef.Name, col.Name, quoteLiteral(col.Comment))
+			if err := ms.db.Exec(ctx, commentQuery); err != nil {
 				return fmt.Errorf("failed to add column comment for %s: %w", col.Name, err)
 			}
 		}
@@ -560,8 +577,8 @@ func (ms *MetaService) UpdateTable(ctx context.Context, schema, tableName string
 
 	// Set table comment
 	if changes.SetComment != nil {
-		commentQuery := fmt.Sprintf("COMMENT ON TABLE %s.%s IS $1", schema, tableName)
-		if _, err := tx.Exec(ctx, commentQuery, *changes.SetComment); err != nil {
+		commentQuery := fmt.Sprintf("COMMENT ON TABLE %q.%q IS %s", schema, tableName, quoteLiteral(*changes.SetComment))
+		if _, err := tx.Exec(ctx, commentQuery); err != nil {
 			return fmt.Errorf("failed to set table comment: %w", err)
 		}
 	}
@@ -606,7 +623,7 @@ func (ms *MetaService) DropTable(ctx context.Context, schema, tableName string, 
 	}
 
 	// Build DROP TABLE statement
-	query := fmt.Sprintf("DROP TABLE %s.%s", schema, tableName)
+	query := fmt.Sprintf("DROP TABLE %q.%q", schema, tableName)
 	if cascade {
 		query += " CASCADE"
 	}
@@ -682,14 +699,14 @@ func (ms *MetaService) tableExists(ctx context.Context, schema, tableName string
 func (ms *MetaService) buildCreateTableQuery(tableDef *TableDefinition) (string, error) {
 	var query strings.Builder
 
-	query.WriteString(fmt.Sprintf("CREATE TABLE %s.%s (\n", tableDef.Schema, tableDef.Name))
+	query.WriteString(fmt.Sprintf("CREATE TABLE %q.%q (\n", tableDef.Schema, tableDef.Name))
 
 	var columnDefs []string
 	var primaryKeyCol string
 
 	for _, col := range tableDef.Columns {
 		var colDef strings.Builder
-		colDef.WriteString(fmt.Sprintf("  %s %s", col.Name, col.Type))
+		colDef.WriteString(fmt.Sprintf("  %q %s", col.Name, col.Type))
 
 		if !col.Nullable {
 			colDef.WriteString(" NOT NULL")
@@ -714,7 +731,7 @@ func (ms *MetaService) buildCreateTableQuery(tableDef *TableDefinition) (string,
 
 	// Add primary key constraint if specified
 	if primaryKeyCol != "" {
-		query.WriteString(fmt.Sprintf(",\n  PRIMARY KEY (%s)", primaryKeyCol))
+		query.WriteString(fmt.Sprintf(",\n  PRIMARY KEY (%q)", primaryKeyCol))
 	}
 
 	query.WriteString("\n)")
@@ -725,7 +742,7 @@ func (ms *MetaService) buildCreateTableQuery(tableDef *TableDefinition) (string,
 // addColumn adds a column to an existing table
 func (ms *MetaService) addColumn(ctx context.Context, tx pgx.Tx, schema, tableName string, col *ColumnDefinition) error {
 	var query strings.Builder
-	query.WriteString(fmt.Sprintf("ALTER TABLE %s.%s ADD COLUMN %s %s", schema, tableName, col.Name, col.Type))
+	query.WriteString(fmt.Sprintf("ALTER TABLE %q.%q ADD COLUMN %q %s", schema, tableName, col.Name, col.Type))
 
 	if !col.Nullable {
 		query.WriteString(" NOT NULL")
@@ -739,15 +756,20 @@ func (ms *MetaService) addColumn(ctx context.Context, tx pgx.Tx, schema, tableNa
 		query.WriteString(" UNIQUE")
 	}
 
+	fmt.Printf("DEBUG: Executing ALTER TABLE query: %s\n", query.String())
 	if _, err := tx.Exec(ctx, query.String()); err != nil {
-		return err
+		fmt.Printf("DEBUG: ALTER TABLE query failed with error: %v\n", err)
+		return fmt.Errorf("ALTER TABLE failed: %w", err)
 	}
 
 	// Add column comment if specified
 	if col.Comment != "" {
-		commentQuery := fmt.Sprintf("COMMENT ON COLUMN %s.%s.%s IS $1", schema, tableName, col.Name)
-		if _, err := tx.Exec(ctx, commentQuery, col.Comment); err != nil {
-			return err
+		// Use direct string interpolation for the comment to avoid parameter issues
+		commentQuery := fmt.Sprintf("COMMENT ON COLUMN %q.%q.%q IS %s", schema, tableName, col.Name, quoteLiteral(col.Comment))
+		fmt.Printf("DEBUG: Executing comment query: %s\n", commentQuery)
+		if _, err := tx.Exec(ctx, commentQuery); err != nil {
+			fmt.Printf("DEBUG: Comment query failed with error: %v\n", err)
+			return fmt.Errorf("comment query failed: %w", err)
 		}
 	}
 
@@ -756,7 +778,7 @@ func (ms *MetaService) addColumn(ctx context.Context, tx pgx.Tx, schema, tableNa
 
 // dropColumn drops a column from an existing table
 func (ms *MetaService) dropColumn(ctx context.Context, tx pgx.Tx, schema, tableName, columnName string) error {
-	query := fmt.Sprintf("ALTER TABLE %s.%s DROP COLUMN %s", schema, tableName, columnName)
+	query := fmt.Sprintf("ALTER TABLE %q.%q DROP COLUMN %q", schema, tableName, columnName)
 	_, err := tx.Exec(ctx, query)
 	return err
 }
@@ -765,7 +787,7 @@ func (ms *MetaService) dropColumn(ctx context.Context, tx pgx.Tx, schema, tableN
 func (ms *MetaService) modifyColumn(ctx context.Context, tx pgx.Tx, schema, tableName string, mod *ColumnModification) error {
 	// Change column type
 	if mod.NewType != nil {
-		query := fmt.Sprintf("ALTER TABLE %s.%s ALTER COLUMN %s TYPE %s", schema, tableName, mod.Name, *mod.NewType)
+		query := fmt.Sprintf("ALTER TABLE %q.%q ALTER COLUMN %q TYPE %s", schema, tableName, mod.Name, *mod.NewType)
 		if _, err := tx.Exec(ctx, query); err != nil {
 			return err
 		}
@@ -779,7 +801,7 @@ func (ms *MetaService) modifyColumn(ctx context.Context, tx pgx.Tx, schema, tabl
 		} else {
 			constraint = "SET NOT NULL"
 		}
-		query := fmt.Sprintf("ALTER TABLE %s.%s ALTER COLUMN %s %s", schema, tableName, mod.Name, constraint)
+		query := fmt.Sprintf("ALTER TABLE %q.%q ALTER COLUMN %q %s", schema, tableName, mod.Name, constraint)
 		if _, err := tx.Exec(ctx, query); err != nil {
 			return err
 		}
@@ -787,7 +809,7 @@ func (ms *MetaService) modifyColumn(ctx context.Context, tx pgx.Tx, schema, tabl
 
 	// Set default value
 	if mod.SetDefault != nil {
-		query := fmt.Sprintf("ALTER TABLE %s.%s ALTER COLUMN %s SET DEFAULT %s", schema, tableName, mod.Name, *mod.SetDefault)
+		query := fmt.Sprintf("ALTER TABLE %q.%q ALTER COLUMN %q SET DEFAULT %s", schema, tableName, mod.Name, *mod.SetDefault)
 		if _, err := tx.Exec(ctx, query); err != nil {
 			return err
 		}
@@ -795,7 +817,7 @@ func (ms *MetaService) modifyColumn(ctx context.Context, tx pgx.Tx, schema, tabl
 
 	// Drop default value
 	if mod.DropDefault {
-		query := fmt.Sprintf("ALTER TABLE %s.%s ALTER COLUMN %s DROP DEFAULT", schema, tableName, mod.Name)
+		query := fmt.Sprintf("ALTER TABLE %q.%q ALTER COLUMN %q DROP DEFAULT", schema, tableName, mod.Name)
 		if _, err := tx.Exec(ctx, query); err != nil {
 			return err
 		}
@@ -803,8 +825,8 @@ func (ms *MetaService) modifyColumn(ctx context.Context, tx pgx.Tx, schema, tabl
 
 	// Set column comment
 	if mod.SetComment != nil {
-		commentQuery := fmt.Sprintf("COMMENT ON COLUMN %s.%s.%s IS $1", schema, tableName, mod.Name)
-		if _, err := tx.Exec(ctx, commentQuery, *mod.SetComment); err != nil {
+		commentQuery := fmt.Sprintf("COMMENT ON COLUMN %q.%q.%q IS %s", schema, tableName, mod.Name, quoteLiteral(*mod.SetComment))
+		if _, err := tx.Exec(ctx, commentQuery); err != nil {
 			return err
 		}
 	}
@@ -814,7 +836,7 @@ func (ms *MetaService) modifyColumn(ctx context.Context, tx pgx.Tx, schema, tabl
 
 // renameColumn renames a column
 func (ms *MetaService) renameColumn(ctx context.Context, tx pgx.Tx, schema, tableName, oldName, newName string) error {
-	query := fmt.Sprintf("ALTER TABLE %s.%s RENAME COLUMN %s TO %s", schema, tableName, oldName, newName)
+	query := fmt.Sprintf("ALTER TABLE %q.%q RENAME COLUMN %q TO %q", schema, tableName, oldName, newName)
 	_, err := tx.Exec(ctx, query)
 	return err
 }
