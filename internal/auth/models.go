@@ -69,7 +69,8 @@ type PasswordResetRequest struct {
 
 // PasswordResetConfirmRequest represents a password reset confirmation request
 type PasswordResetConfirmRequest struct {
-	Token       string `json:"token" validate:"required"`
+	Identifier  string `json:"identifier" validate:"required"` // email, phone, or username
+	OTPCode     string `json:"otp_code" validate:"required,len=6"`
 	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
 

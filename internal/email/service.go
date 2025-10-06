@@ -597,3 +597,104 @@ The {{.AppName}} Team
 This is an automated message, please do not reply to this email.`,
 	}
 }
+
+// SendPasswordResetOTP sends a password reset OTP email
+func (s *Service) SendPasswordResetOTP(ctx context.Context, to, otp, appName string) error {
+	if appName == "" {
+		appName = s.appName
+	}
+
+	template := s.getPasswordResetOTPTemplate()
+	data := TemplateData{
+		AppName: appName,
+		OTP:     otp,
+	}
+
+	subject := s.renderTemplate(template.Subject, data)
+	htmlBody := s.renderTemplate(template.HTMLBody, data)
+	textBody := s.renderTemplate(template.TextBody, data)
+
+	return s.provider.SendHTMLEmail(ctx, to, subject, htmlBody, textBody)
+}
+
+// getPasswordResetOTPTemplate returns the password reset OTP email template
+func (s *Service) getPasswordResetOTPTemplate() EmailTemplate {
+	return EmailTemplate{
+		Subject: "{{.AppName}} - Password Reset Code",
+		HTMLBody: `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Password Reset</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #dc3545; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+        .content { padding: 20px 0; }
+        .otp-code { font-size: 32px; font-weight: bold; color: #dc3545; text-align: center; 
+                   background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; 
+                   letter-spacing: 5px; }
+        .footer { font-size: 12px; color: #666; text-align: center; margin-top: 30px; }
+        .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; 
+                  border-radius: 5px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{.AppName}}</h1>
+            <h2>🔒 Password Reset</h2>
+        </div>
+        
+        <div class="content">
+            <p>Hello,</p>
+            
+            <p>You have requested to reset your password for your {{.AppName}} account. Please use the following verification code to complete your password reset:</p>
+            
+            <div class="otp-code">{{.OTP}}</div>
+            
+            <div class="warning">
+                <strong>Security Notice:</strong>
+                <ul>
+                    <li>This code will expire in 10 minutes</li>
+                    <li>Never share this code with anyone</li>
+                    <li>If you didn't request this reset, please secure your account immediately</li>
+                    <li>Your password will not be changed until you complete the reset process</li>
+                </ul>
+            </div>
+            
+            <p>If you have any security concerns, please contact our support team immediately.</p>
+            
+            <p>Best regards,<br>The {{.AppName}} Security Team</p>
+        </div>
+        
+        <div class="footer">
+            <p>This is an automated security message, please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>`,
+		TextBody: `{{.AppName}} - Password Reset
+
+Hello,
+
+You have requested to reset your password for your {{.AppName}} account. Please use the following verification code to complete your password reset:
+
+Password Reset Code: {{.OTP}}
+
+Security Notice:
+- This code will expire in 10 minutes
+- Never share this code with anyone
+- If you didn't request this reset, please secure your account immediately
+- Your password will not be changed until you complete the reset process
+
+If you have any security concerns, please contact our support team immediately.
+
+Best regards,
+The {{.AppName}} Security Team
+
+---
+This is an automated security message, please do not reply to this email.`,
+	}
+}

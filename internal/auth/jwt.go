@@ -12,6 +12,7 @@ type JWTManager struct {
 	secretKey         []byte
 	accessExpiration  time.Duration
 	refreshExpiration time.Duration
+	blacklist         *TokenBlacklist
 }
 
 // NewJWTManager creates a new JWT manager
@@ -20,6 +21,7 @@ func NewJWTManager(secretKey string, accessExpiration, refreshExpiration time.Du
 		secretKey:         []byte(secretKey),
 		accessExpiration:  accessExpiration,
 		refreshExpiration: refreshExpiration,
+		blacklist:         NewTokenBlacklist(),
 	}
 }
 
@@ -108,6 +110,11 @@ func (jm *JWTManager) generateToken(user *User, tokenType string, expiration tim
 
 // ValidateToken validates a JWT token and returns the claims
 func (jm *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
+	// Check if token is blacklisted
+	if jm.blacklist.IsBlacklisted(tokenString) {
+		return nil, fmt.Errorf("token has been revoked")
+	}
+
 	// Parse token
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		// Validate signing method
@@ -166,9 +173,14 @@ func (jm *JWTManager) ValidateRefreshToken(tokenString string) (*Claims, error) 
 // RefreshTokenPair generates a new token pair using a valid refresh token
 func (jm *JWTManager) RefreshTokenPair(refreshTokenString string, user *User) (*TokenPair, error) {
 	// Validate refresh token
-	_, err := jm.ValidateRefreshToken(refreshTokenString)
+	claims, err := jm.ValidateRefreshToken(refreshTokenString)
 	if err != nil {
 		return nil, fmt.Errorf("invalid refresh token: %w", err)
+	}
+
+	// Blacklist the old refresh token to prevent reuse
+	if claims.ExpiresAt != nil {
+		jm.blacklist.BlacklistToken(refreshTokenString, claims.ExpiresAt.Time)
 	}
 
 	// Generate new token pair
@@ -213,4 +225,35 @@ func (jm *JWTManager) IsTokenExpired(tokenString string) bool {
 	}
 
 	return expiration.Before(time.Now())
+}
+
+// BlacklistToken adds a token to the blacklist (for logout)
+func (jm *JWTManager) BlacklistToken(tokenString string) error {
+	claims, err := jm.ValidateToken(tokenString)
+	if err != nil {
+		// Even if token is invalid, we might want to blacklist it
+		// Extract expiration without validation
+		token, _, parseErr := new(jwt.Parser).ParseUnverified(tokenString, &Claims{})
+		if parseErr != nil {
+			return fmt.Errorf("cannot blacklist invalid token: %w", parseErr)
+		}
+
+		if claims, ok := token.Claims.(*Claims); ok && claims.ExpiresAt != nil {
+			jm.blacklist.BlacklistToken(tokenString, claims.ExpiresAt.Time)
+			return nil
+		}
+
+		return fmt.Errorf("cannot determine token expiration: %w", err)
+	}
+
+	if claims.ExpiresAt != nil {
+		jm.blacklist.BlacklistToken(tokenString, claims.ExpiresAt.Time)
+	}
+
+	return nil
+}
+
+// GetBlacklistStats returns blacklist statistics
+func (jm *JWTManager) GetBlacklistStats() map[string]interface{} {
+	return jm.blacklist.GetBlacklistStats()
 }

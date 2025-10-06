@@ -244,8 +244,18 @@ func (v *Validator) ValidatePasswordResetConfirmRequest(req *PasswordResetConfir
 		return fmt.Errorf("request cannot be nil")
 	}
 
-	if strings.TrimSpace(req.Token) == "" {
-		return fmt.Errorf("token cannot be empty")
+	if strings.TrimSpace(req.Identifier) == "" {
+		return fmt.Errorf("identifier cannot be empty")
+	}
+
+	if strings.TrimSpace(req.OTPCode) == "" {
+		return fmt.Errorf("OTP code cannot be empty")
+	}
+
+	// Check if OTP code is exactly 6 digits
+	codeRegex := regexp.MustCompile(`^\d{6}$`)
+	if !codeRegex.MatchString(req.OTPCode) {
+		return fmt.Errorf("OTP code must be exactly 6 digits")
 	}
 
 	if err := v.ValidatePassword(req.NewPassword); err != nil {

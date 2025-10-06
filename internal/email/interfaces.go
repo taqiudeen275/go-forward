@@ -13,6 +13,7 @@ type EmailService interface {
 	SendOTP(ctx context.Context, to, otp, appName string) error
 	SendOTPWithPurpose(ctx context.Context, to, otp, purpose, appName string) error
 	SendPasswordReset(ctx context.Context, to, resetToken, appName string) error
+	SendPasswordResetOTP(ctx context.Context, to, otp, appName string) error
 	SendWelcome(ctx context.Context, to, name, appName string) error
 }
 

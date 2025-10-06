@@ -377,7 +377,7 @@ func (s *Service) CreateMiddleware() *Middleware {
 	return NewMiddleware(s.jwtManager, s)
 }
 
-// RequestPasswordReset creates a password reset token and sends it to the user
+// RequestPasswordReset sends an OTP for password reset
 func (s *Service) RequestPasswordReset(ctx context.Context, req *PasswordResetRequest) error {
 	// Validate request
 	if err := s.validator.ValidatePasswordResetRequest(req); err != nil {
@@ -391,59 +391,153 @@ func (s *Service) RequestPasswordReset(ctx context.Context, req *PasswordResetRe
 		return nil
 	}
 
-	// Generate reset token
-	resetToken := &PasswordResetToken{
-		ID:        uuid.New().String(),
-		UserID:    user.ID,
-		Token:     generateSecureToken(),
-		ExpiresAt: time.Now().Add(1 * time.Hour), // Token expires in 1 hour
-		Used:      false,
-		CreatedAt: time.Now(),
+	// Check rate limiting
+	if err := s.securityMonitor.CheckOTPRequestRate(req.Identifier); err != nil {
+		return err
 	}
 
-	// Save token to database
-	err = s.repo.CreatePasswordResetToken(ctx, resetToken)
-	if err != nil {
-		return fmt.Errorf("failed to create password reset token: %w", err)
+	// Check if recipient is locked out
+	if s.securityMonitor.IsLocked(req.Identifier) {
+		return fmt.Errorf("account temporarily locked due to suspicious activity")
 	}
 
-	// Send password reset email
-	if s.emailService != nil && user.Email != nil {
-		err = s.emailService.SendPasswordReset(ctx, *user.Email, resetToken.Token, "Go Forward")
-		if err != nil {
-			return fmt.Errorf("failed to send password reset email: %w", err)
-		}
+	// Determine OTP type based on identifier
+	var otpType OTPType
+	var recipient string
+
+	if user.Email != nil && *user.Email == req.Identifier {
+		otpType = OTPTypeEmail
+		recipient = *user.Email
+	} else if user.Phone != nil && *user.Phone == req.Identifier {
+		otpType = OTPTypeSMS
+		recipient = *user.Phone
 	} else {
-		// Fallback: log the token if email service is not configured
-		fmt.Printf("Password reset token for user %s: %s (email service not configured)\n", user.ID, resetToken.Token)
+		// If identifier is username, prefer email, fallback to phone
+		if user.Email != nil {
+			otpType = OTPTypeEmail
+			recipient = *user.Email
+		} else if user.Phone != nil {
+			otpType = OTPTypeSMS
+			recipient = *user.Phone
+		} else {
+			return fmt.Errorf("no email or phone available for password reset")
+		}
+	}
+
+	// Create OTP generator
+	otpGenerator := NewOTPGeneratorWithConfig(6, 10*time.Minute, 3)
+
+	// Generate OTP for password reset (using verification purpose)
+	otp, err := otpGenerator.CreateOTP(&user.ID, otpType, OTPPurposeVerification, recipient)
+	if err != nil {
+		return fmt.Errorf("failed to generate password reset OTP: %w", err)
+	}
+
+	// Save OTP to database
+	err = s.repo.CreateOTP(ctx, otp)
+	if err != nil {
+		return fmt.Errorf("failed to save password reset OTP: %w", err)
+	}
+
+	// Send OTP via email or SMS
+	switch otpType {
+	case OTPTypeEmail:
+		if s.emailService != nil {
+			err = s.emailService.SendPasswordResetOTP(ctx, recipient, otp.Code, "Go Forward")
+			if err != nil {
+				return fmt.Errorf("failed to send password reset OTP email: %w", err)
+			}
+		} else {
+			fmt.Printf("Password reset OTP for %s: %s (email service not configured)\n", recipient, otp.Code)
+		}
+
+	case OTPTypeSMS:
+		if s.smsService != nil {
+			err = s.smsService.SendPasswordResetOTP(ctx, recipient, otp.Code, "Go Forward")
+			if err != nil {
+				return fmt.Errorf("failed to send password reset OTP SMS: %w", err)
+			}
+		} else {
+			fmt.Printf("Password reset OTP for %s: %s (SMS service not configured)\n", recipient, otp.Code)
+		}
 	}
 
 	return nil
 }
 
-// ConfirmPasswordReset validates the reset token and updates the user's password
+// ConfirmPasswordReset validates the OTP and updates the user's password
 func (s *Service) ConfirmPasswordReset(ctx context.Context, req *PasswordResetConfirmRequest) error {
 	// Validate request
 	if err := s.validator.ValidatePasswordResetConfirmRequest(req); err != nil {
 		return err
 	}
 
-	// Get and validate reset token
-	resetToken, err := s.repo.GetPasswordResetToken(ctx, req.Token)
+	// Find user by identifier
+	user, err := s.GetUserByIdentifier(ctx, req.Identifier)
 	if err != nil {
-		return fmt.Errorf("invalid or expired reset token")
+		return fmt.Errorf("user not found")
+	}
+
+	// Determine OTP type and recipient based on identifier
+	var otpType OTPType
+	var recipient string
+
+	if user.Email != nil && *user.Email == req.Identifier {
+		otpType = OTPTypeEmail
+		recipient = *user.Email
+	} else if user.Phone != nil && *user.Phone == req.Identifier {
+		otpType = OTPTypeSMS
+		recipient = *user.Phone
+	} else {
+		// If identifier is username, check which contact method was used for OTP
+		// Try email first, then phone
+		if user.Email != nil {
+			otpType = OTPTypeEmail
+			recipient = *user.Email
+		} else if user.Phone != nil {
+			otpType = OTPTypeSMS
+			recipient = *user.Phone
+		} else {
+			return fmt.Errorf("no email or phone available for password reset")
+		}
+	}
+
+	// Get the latest OTP for password reset (verification purpose)
+	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, recipient, otpType, OTPPurposeVerification)
+	if err != nil {
+		return fmt.Errorf("invalid or expired OTP")
+	}
+
+	// Increment attempts first
+	err = s.repo.IncrementOTPAttempts(ctx, otp.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update OTP attempts: %w", err)
+	}
+
+	// Create OTP generator for validation
+	otpGenerator := NewOTPGeneratorWithConfig(6, 10*time.Minute, 3)
+
+	// Validate the OTP code
+	err = otpGenerator.ValidateCode(otp, req.OTPCode)
+	if err != nil {
+		// Record failed attempt for security monitoring
+		s.securityMonitor.RecordFailedAttempt(recipient)
+		return err
+	}
+
+	// Clear failed attempts on successful verification
+	s.securityMonitor.ClearFailedAttempts(recipient)
+
+	// Mark OTP as used
+	err = s.repo.MarkOTPUsed(ctx, otp.ID)
+	if err != nil {
+		return fmt.Errorf("failed to mark OTP as used: %w", err)
 	}
 
 	// Update user's password
-	err = s.UpdatePassword(ctx, resetToken.UserID, req.NewPassword)
+	err = s.UpdatePassword(ctx, user.ID, req.NewPassword)
 	if err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
-	}
-
-	// Mark token as used
-	err = s.repo.MarkPasswordResetTokenUsed(ctx, resetToken.ID)
-	if err != nil {
-		return fmt.Errorf("failed to mark reset token as used: %w", err)
 	}
 
 	return nil
@@ -830,4 +924,29 @@ func (s *Service) LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*Aut
 // RegisterWithOTP creates a new user using OTP verification and returns JWT tokens (backward compatibility)
 func (s *Service) RegisterWithOTP(ctx context.Context, req *VerifyOTPRequest, password *string) (*AuthResponse, error) {
 	return s.RegisterWithOTPPurpose(ctx, req, OTPPurposeRegistration, password)
+}
+
+// Logout blacklists user tokens to prevent further use
+func (s *Service) Logout(ctx context.Context, accessToken, refreshToken string) error {
+	var errors []string
+
+	// Blacklist access token if provided
+	if accessToken != "" {
+		if err := s.jwtManager.BlacklistToken(accessToken); err != nil {
+			errors = append(errors, fmt.Sprintf("failed to blacklist access token: %v", err))
+		}
+	}
+
+	// Blacklist refresh token if provided
+	if refreshToken != "" {
+		if err := s.jwtManager.BlacklistToken(refreshToken); err != nil {
+			errors = append(errors, fmt.Sprintf("failed to blacklist refresh token: %v", err))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("logout errors: %s", strings.Join(errors, "; "))
+	}
+
+	return nil
 }

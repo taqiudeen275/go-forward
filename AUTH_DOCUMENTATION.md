@@ -152,7 +152,7 @@ Content-Type: application/json
 
 ### 4. Password Management
 
-#### Request Password Reset
+#### Request Password Reset (OTP-based)
 ```http
 POST /auth/password-reset
 Content-Type: application/json
@@ -162,14 +162,28 @@ Content-Type: application/json
 }
 ```
 
+**Response:** Sends OTP to user's email or phone based on identifier.
+
 #### Confirm Password Reset
 ```http
 POST /auth/password-reset/confirm
 Content-Type: application/json
 
 {
-  "token": "reset_token_from_email",
+  "identifier": "user@example.com",
+  "otp_code": "123456",
   "new_password": "newsecurepassword123"
+}
+```
+
+#### Logout (Blacklist Tokens)
+```http
+POST /auth/logout
+Content-Type: application/json
+Authorization: Bearer <access_token>
+
+{
+  "refresh_token": "jwt_refresh_token" // Optional if provided in body
 }
 ```
 
@@ -412,13 +426,28 @@ auth:
 
 ## Security Best Practices
 
-1. **Purpose Isolation**: Each OTP purpose has its own validation logic
-2. **Endpoint Separation**: Different endpoints for different OTP purposes
-3. **User Existence Validation**: Proper checks based on purpose
-4. **Attempt Limiting**: Maximum 3 attempts per OTP
-5. **Time-based Expiration**: 10-minute OTP validity
-6. **Secure Token Generation**: Cryptographically secure random codes
-7. **Auto-cleanup**: Expired OTPs are automatically removed
+### 🔐 OTP Security
+1. **Secure Hashing**: OTPs are hashed with salt before database storage
+2. **Purpose Isolation**: Each OTP purpose has its own validation logic
+3. **Endpoint Separation**: Different endpoints for different OTP purposes
+4. **User Existence Validation**: Proper checks based on purpose
+5. **Attempt Limiting**: Maximum 3 attempts per OTP
+6. **Time-based Expiration**: 10-minute OTP validity
+7. **Cryptographic Generation**: Uses crypto/rand for secure randomness
+8. **Rate Limiting**: Maximum 10 OTP requests per hour per recipient
+9. **Auto-cleanup**: Expired OTPs are automatically removed
+
+### 🔑 JWT Security
+1. **Token Blacklisting**: Old refresh tokens are invalidated after use
+2. **Logout Support**: Tokens can be blacklisted on logout
+3. **Constant-time Comparison**: Prevents timing attacks
+4. **Automatic Cleanup**: Expired blacklisted tokens are removed
+
+### 🛡️ Password Reset Security
+1. **OTP-based Reset**: No long-lived tokens, uses secure OTP system
+2. **Multi-channel Support**: Works with email or SMS
+3. **Rate Limited**: Same rate limiting as other OTP operations
+4. **Attempt Tracking**: Failed attempts are monitored and limited
 
 ## Database Schema
 

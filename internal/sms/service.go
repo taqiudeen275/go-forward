@@ -112,3 +112,17 @@ func (s *Service) SendOTPWithPurpose(ctx context.Context, to, otp, purpose, appN
 
 	return s.provider.SendOTPWithPurpose(ctx, to, otp, purpose, appName)
 }
+
+// SendPasswordResetOTP sends a password reset OTP SMS message
+func (s *Service) SendPasswordResetOTP(ctx context.Context, to, otp, appName string) error {
+	if appName == "" {
+		appName = s.appName
+	}
+
+	// Validate phone number
+	if err := s.validatePhoneNumber(to); err != nil {
+		return fmt.Errorf("invalid phone number: %w", err)
+	}
+
+	return s.provider.SendPasswordResetOTP(ctx, to, otp, appName)
+}

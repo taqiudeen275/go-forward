@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +25,7 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 	{
 		auth.POST("/register", h.Register)
 		auth.POST("/login", h.Login)
+		auth.POST("/logout", h.Logout)
 		auth.POST("/refresh", h.RefreshToken)
 		auth.POST("/password-reset", h.RequestPasswordReset)
 		auth.POST("/password-reset/confirm", h.ConfirmPasswordReset)
@@ -204,4 +206,33 @@ func (h *Handler) RegisterWithOTP(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, authResponse)
+}
+
+// Logout handles user logout by blacklisting tokens
+func (h *Handler) Logout(c *gin.Context) {
+	var req struct {
+		AccessToken  string `json:"access_token,omitempty"`
+		RefreshToken string `json:"refresh_token,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Get token from Authorization header if not in body
+	if req.AccessToken == "" {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			req.AccessToken = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	}
+
+	err := h.service.Logout(c.Request.Context(), req.AccessToken, req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }

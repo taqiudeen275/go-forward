@@ -163,3 +163,9 @@ func (a *ArkeselProvider) SendOTPWithPurpose(ctx context.Context, to, otp, purpo
 
 	return a.SendSMS(ctx, to, message)
 }
+
+// SendPasswordResetOTP sends a password reset OTP SMS using Arkesel API
+func (a *ArkeselProvider) SendPasswordResetOTP(ctx context.Context, to, otp, appName string) error {
+	message := fmt.Sprintf("🔒 %s Password Reset Code: %s. This code expires in 10 minutes. If you didn't request this, please secure your account immediately.", appName, otp)
+	return a.SendSMS(ctx, to, message)
+}
