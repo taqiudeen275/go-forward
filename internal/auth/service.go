@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -451,6 +453,53 @@ func generateSecureToken() string {
 	return strings.ReplaceAll(token, "-", "")
 }
 
+// generateSecurePassword generates a secure password that meets all validation requirements
+func generateSecurePassword() string {
+	// Define character sets
+	uppercase := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	lowercase := "abcdefghijklmnopqrstuvwxyz"
+	digits := "0123456789"
+	special := "!@#$%^&*()_+-=[]{}|;:,.<>?"
+
+	// Ensure at least one character from each required set
+	var password strings.Builder
+	password.WriteByte(uppercase[generateRandomIndex(len(uppercase))])
+	password.WriteByte(lowercase[generateRandomIndex(len(lowercase))])
+	password.WriteByte(digits[generateRandomIndex(len(digits))])
+	password.WriteByte(special[generateRandomIndex(len(special))])
+
+	// Fill remaining characters (minimum 8 total, we'll make it 12 for security)
+	allChars := uppercase + lowercase + digits + special
+	for i := 4; i < 12; i++ {
+		password.WriteByte(allChars[generateRandomIndex(len(allChars))])
+	}
+
+	// Shuffle the password to avoid predictable patterns
+	passwordBytes := []byte(password.String())
+	for i := len(passwordBytes) - 1; i > 0; i-- {
+		j := generateRandomIndex(i + 1)
+		passwordBytes[i], passwordBytes[j] = passwordBytes[j], passwordBytes[i]
+	}
+
+	return string(passwordBytes)
+}
+
+// generateRandomIndex generates a cryptographically secure random index
+func generateRandomIndex(max int) int {
+	if max <= 0 {
+		return 0
+	}
+
+	// Use crypto/rand for secure random generation
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		// Fallback to a simple method if crypto/rand fails
+		return int(time.Now().UnixNano()) % max
+	}
+
+	return int(n.Int64())
+}
+
 // SendOTP generates and sends an OTP to the specified recipient
 func (s *Service) SendOTP(ctx context.Context, req *OTPRequest) error {
 	// Validate request
@@ -526,27 +575,27 @@ func (s *Service) SendOTP(ctx context.Context, req *OTPRequest) error {
 	return nil
 }
 
-// VerifyOTP verifies an OTP code and returns the associated user if found
-func (s *Service) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, error) {
+// VerifyOTPWithPurpose verifies an OTP code with a specific purpose and returns the associated user if found
+func (s *Service) VerifyOTPWithPurpose(ctx context.Context, req *VerifyOTPRequest, purpose OTPPurpose) (*User, error) {
 	// Validate request
 	if err := s.validator.ValidateVerifyOTPRequest(req); err != nil {
 		return nil, err
 	}
 
+	// Only allow verification purpose for this method
+	if purpose != OTPPurposeVerification {
+		return nil, fmt.Errorf("this method only supports verification purpose")
+	}
+
 	// Get the latest OTP for this recipient, type, and purpose
-	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, req.Purpose)
+	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, purpose)
 	if err != nil {
 		return nil, fmt.Errorf("invalid or expired OTP")
 	}
 
 	// Verify purpose matches
-	if otp.Purpose != req.Purpose {
+	if otp.Purpose != purpose {
 		return nil, fmt.Errorf("OTP purpose mismatch")
-	}
-
-	// Only allow verification endpoint for verification purpose
-	if req.Purpose != OTPPurposeVerification {
-		return nil, fmt.Errorf("use appropriate endpoint for %s OTP", req.Purpose)
 	}
 
 	// Increment attempts first
@@ -595,21 +644,21 @@ func (s *Service) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, 
 	return nil, nil
 }
 
-// LoginWithOTP authenticates a user using OTP and returns JWT tokens
-func (s *Service) LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*AuthResponse, error) {
-	// Only allow login purpose for this endpoint
-	if req.Purpose != OTPPurposeLogin {
-		return nil, fmt.Errorf("only login OTPs are allowed for this endpoint")
+// LoginWithOTPPurpose authenticates a user using OTP and returns JWT tokens
+func (s *Service) LoginWithOTPPurpose(ctx context.Context, req *VerifyOTPRequest, purpose OTPPurpose) (*AuthResponse, error) {
+	// Only allow login purpose for this method
+	if purpose != OTPPurposeLogin {
+		return nil, fmt.Errorf("this method only supports login purpose")
 	}
 
 	// Get the latest OTP for this recipient, type, and purpose
-	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, req.Purpose)
+	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, purpose)
 	if err != nil {
 		return nil, fmt.Errorf("invalid or expired OTP")
 	}
 
 	// Verify purpose matches
-	if otp.Purpose != req.Purpose {
+	if otp.Purpose != purpose {
 		return nil, fmt.Errorf("OTP purpose mismatch")
 	}
 
@@ -658,21 +707,21 @@ func (s *Service) LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*Aut
 	}, nil
 }
 
-// RegisterWithOTP creates a new user using OTP verification and returns JWT tokens
-func (s *Service) RegisterWithOTP(ctx context.Context, req *VerifyOTPRequest, password *string) (*AuthResponse, error) {
-	// Only allow registration purpose for this endpoint
-	if req.Purpose != OTPPurposeRegistration {
-		return nil, fmt.Errorf("only registration OTPs are allowed for this endpoint")
+// RegisterWithOTPPurpose creates a new user using OTP verification and returns JWT tokens
+func (s *Service) RegisterWithOTPPurpose(ctx context.Context, req *VerifyOTPRequest, purpose OTPPurpose, password *string) (*AuthResponse, error) {
+	// Only allow registration purpose for this method
+	if purpose != OTPPurposeRegistration {
+		return nil, fmt.Errorf("this method only supports registration purpose")
 	}
 
 	// Get the latest OTP for this recipient, type, and purpose
-	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, req.Purpose)
+	otp, err := s.repo.GetLatestOTPWithPurpose(ctx, req.Recipient, req.Type, purpose)
 	if err != nil {
 		return nil, fmt.Errorf("invalid or expired OTP")
 	}
 
 	// Verify purpose matches
-	if otp.Purpose != req.Purpose {
+	if otp.Purpose != purpose {
 		return nil, fmt.Errorf("OTP purpose mismatch")
 	}
 
@@ -714,8 +763,8 @@ func (s *Service) RegisterWithOTP(ctx context.Context, req *VerifyOTPRequest, pa
 	if password != nil && *password != "" {
 		createReq.Password = *password
 	} else {
-		// Generate a random password for phone-only registration
-		createReq.Password = generateSecureToken()[:16]
+		// Generate a secure password that meets all validation requirements
+		createReq.Password = generateSecurePassword()
 	}
 
 	// Create user
@@ -748,4 +797,19 @@ func (s *Service) RegisterWithOTP(ctx context.Context, req *VerifyOTPRequest, pa
 		RefreshToken: tokenPair.RefreshToken,
 		ExpiresIn:    int(tokenPair.ExpiresIn),
 	}, nil
+}
+
+// VerifyOTP verifies an OTP code and returns the associated user if found (backward compatibility)
+func (s *Service) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, error) {
+	return s.VerifyOTPWithPurpose(ctx, req, OTPPurposeVerification)
+}
+
+// LoginWithOTP authenticates a user using OTP and returns JWT tokens (backward compatibility)
+func (s *Service) LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*AuthResponse, error) {
+	return s.LoginWithOTPPurpose(ctx, req, OTPPurposeLogin)
+}
+
+// RegisterWithOTP creates a new user using OTP verification and returns JWT tokens (backward compatibility)
+func (s *Service) RegisterWithOTP(ctx context.Context, req *VerifyOTPRequest, password *string) (*AuthResponse, error) {
+	return s.RegisterWithOTPPurpose(ctx, req, OTPPurposeRegistration, password)
 }

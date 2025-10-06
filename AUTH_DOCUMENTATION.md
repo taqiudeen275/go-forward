@@ -4,6 +4,7 @@
 
 The GoForward authentication system provides comprehensive user management with multiple authentication methods including traditional email/password, phone/password, and OTP-based authentication for login, registration, and verification.
 
+
 ## Key Features
 
 - **Multiple Authentication Methods**: Email, phone, or username with password
@@ -99,12 +100,11 @@ Content-Type: application/json
 {
   "type": "email",
   "recipient": "user@example.com", 
-  "code": "123456",
-  "purpose": "verification"
+  "code": "123456"
 }
 ```
 
-**Note:** Only accepts `purpose: "verification"`. Other purposes must use their specific endpoints.
+**Note:** Purpose is automatically inferred as "verification" from the endpoint.
 
 #### Login with OTP
 ```http
@@ -114,12 +114,11 @@ Content-Type: application/json
 {
   "type": "sms",
   "recipient": "+233123456789",
-  "code": "123456", 
-  "purpose": "login"
+  "code": "123456"
 }
 ```
 
-**Note:** Only accepts `purpose: "login"`. User must exist.
+**Note:** Purpose is automatically inferred as "login" from the endpoint. User must exist.
 
 #### Register with OTP
 ```http
@@ -130,15 +129,14 @@ Content-Type: application/json
   "type": "email",
   "recipient": "newuser@example.com",
   "code": "123456",
-  "purpose": "registration",
   "password": "optional_password" // Optional for phone-only registration
 }
 ```
 
 **Features:**
-- **Phone-only registration**: If no password provided, generates random password
+- **Phone-only registration**: If no password provided, generates secure random password
 - **Auto-verification**: Email/phone automatically marked as verified after successful OTP
-- **Purpose validation**: Only accepts `purpose: "registration"`
+- **Purpose inference**: Purpose is automatically inferred as "registration" from the endpoint
 
 ### 3. Token Management
 
@@ -237,7 +235,7 @@ curl -X POST /auth/otp/send \
 
 curl -X POST /auth/otp/verify \
   -H "Content-Type: application/json" \
-  -d '{"type":"email","recipient":"user@example.com","code":"123456","purpose":"verification"}'
+  -d '{"type":"email","recipient":"user@example.com","code":"123456"}'
 ```
 
 ### 2. Phone + Password Registration
@@ -254,7 +252,7 @@ curl -X POST /auth/otp/send \
 
 curl -X POST /auth/otp/verify \
   -H "Content-Type: application/json" \
-  -d '{"type":"sms","recipient":"+233123456789","code":"123456","purpose":"verification"}'
+  -d '{"type":"sms","recipient":"+233123456789","code":"123456"}'
 ```
 
 ### 3. Email-Only Registration (OTP-based)
@@ -267,21 +265,23 @@ curl -X POST /auth/otp/send \
 # 2. Complete registration with OTP
 curl -X POST /auth/otp/register \
   -H "Content-Type: application/json" \
-  -d '{"type":"email","recipient":"user@example.com","code":"123456","purpose":"registration","password":"secure123"}'
+  -d '{"type":"email","recipient":"user@example.com","code":"123456","password":"secure123"}'
 ```
 
-### 4. Phone-Only Registration (No Password)
+### 4. Phone-Only Registration (Auto-Generated Password)
 ```bash
 # 1. Send registration OTP
 curl -X POST /auth/otp/send \
   -H "Content-Type: application/json" \
   -d '{"type":"sms","recipient":"+233123456789","purpose":"registration"}'
 
-# 2. Complete registration with OTP (no password needed)
+# 2. Complete registration with OTP (secure password auto-generated)
 curl -X POST /auth/otp/register \
   -H "Content-Type: application/json" \
-  -d '{"type":"sms","recipient":"+233123456789","code":"123456","purpose":"registration"}'
+  -d '{"type":"sms","recipient":"+233123456789","code":"123456"}'
 ```
+
+**Note**: When no password is provided, the system automatically generates a secure 12-character password that meets all validation requirements.
 
 ## Login Scenarios
 
@@ -302,7 +302,7 @@ curl -X POST /auth/otp/send \
 # 2. Login with OTP
 curl -X POST /auth/otp/login \
   -H "Content-Type: application/json" \
-  -d '{"type":"email","recipient":"user@example.com","code":"123456","purpose":"login"}'
+  -d '{"type":"email","recipient":"user@example.com","code":"123456"}'
 ```
 
 ### 3. OTP Login (SMS)
@@ -315,7 +315,7 @@ curl -X POST /auth/otp/send \
 # 2. Login with OTP
 curl -X POST /auth/otp/login \
   -H "Content-Type: application/json" \
-  -d '{"type":"sms","recipient":"+233123456789","code":"123456","purpose":"login"}'
+  -d '{"type":"sms","recipient":"+233123456789","code":"123456"}'
 ```
 
 ## Error Handling
@@ -363,6 +363,26 @@ curl -X POST /auth/otp/login \
   "error": "maximum attempts reached"
 }
 ```
+
+## Password Requirements
+
+All passwords (whether provided by users or auto-generated) must meet these security requirements:
+
+- **Minimum length**: 8 characters
+- **Maximum length**: 128 characters
+- **Must contain at least one**:
+  - Uppercase letter (A-Z)
+  - Lowercase letter (a-z)
+  - Digit (0-9)
+  - Special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
+
+### Auto-Generated Passwords
+
+For phone-only registration without a provided password, the system generates a secure 12-character password that:
+- Contains characters from all required categories
+- Uses cryptographically secure random generation
+- Is shuffled to avoid predictable patterns
+- Automatically meets all validation requirements
 
 ## Configuration
 
@@ -454,10 +474,10 @@ curl -X POST /auth/otp/send \
 
 ### Test Purpose Validation
 ```bash
-# Try to use login OTP on verify endpoint
+# Try to use login OTP on verify endpoint (will fail because purposes don't match)
 curl -X POST /auth/otp/verify \
-  -d '{"type":"email","recipient":"user@example.com","code":"123456","purpose":"login"}'
-# Should return: {"error": "use appropriate endpoint for login OTP"}
+  -d '{"type":"email","recipient":"user@example.com","code":"123456"}'
+# Should return: {"error": "invalid or expired OTP"} (because no verification OTP exists)
 ```
 
 This documentation covers all the fixes implemented for the OTP authentication system, ensuring proper user existence validation, purpose-specific messaging, and endpoint isolation.

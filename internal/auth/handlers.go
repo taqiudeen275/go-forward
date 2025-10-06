@@ -154,7 +154,7 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.VerifyOTP(c.Request.Context(), &req)
+	user, err := h.service.VerifyOTPWithPurpose(c.Request.Context(), &req, OTPPurposeVerification)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -176,7 +176,7 @@ func (h *Handler) LoginWithOTP(c *gin.Context) {
 		return
 	}
 
-	authResponse, err := h.service.LoginWithOTP(c.Request.Context(), &req)
+	authResponse, err := h.service.LoginWithOTPPurpose(c.Request.Context(), &req, OTPPurposeLogin)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -197,7 +197,7 @@ func (h *Handler) RegisterWithOTP(c *gin.Context) {
 		return
 	}
 
-	authResponse, err := h.service.RegisterWithOTP(c.Request.Context(), &req.VerifyOTPRequest, req.Password)
+	authResponse, err := h.service.RegisterWithOTPPurpose(c.Request.Context(), &req.VerifyOTPRequest, OTPPurposeRegistration, req.Password)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

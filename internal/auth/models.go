@@ -124,8 +124,7 @@ type OTPRequest struct {
 
 // VerifyOTPRequest represents a request to verify an OTP
 type VerifyOTPRequest struct {
-	Type      OTPType    `json:"type" validate:"required,oneof=email sms"`
-	Recipient string     `json:"recipient" validate:"required"`
-	Code      string     `json:"code" validate:"required,len=6"`
-	Purpose   OTPPurpose `json:"purpose" validate:"required,oneof=login registration verification"`
+	Type      OTPType `json:"type" validate:"required,oneof=email sms"`
+	Recipient string  `json:"recipient" validate:"required"`
+	Code      string  `json:"code" validate:"required,len=6"`
 }
