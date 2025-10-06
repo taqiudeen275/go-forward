@@ -692,6 +692,11 @@ func TestJWTManager_RefreshTokenPair_Success(t *testing.T) {
 	refreshClaims, err := jwtManager.ValidateRefreshToken(newTokenPair.RefreshToken)
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, refreshClaims.UserID)
+
+	// Verify that the old refresh token is now blacklisted
+	_, err = jwtManager.ValidateRefreshToken(initialTokenPair.RefreshToken)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "token has been revoked")
 }
 
 func TestJWTManager_ExtractUserID_Success(t *testing.T) {
@@ -958,6 +963,11 @@ func TestService_TokenRefreshFlow(t *testing.T) {
 	newRefreshClaims, err := service.jwtManager.ValidateRefreshToken(refreshResponse.RefreshToken)
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, newRefreshClaims.UserID)
+
+	// Verify that the old refresh token is now blacklisted
+	_, err = service.jwtManager.ValidateRefreshToken(initialTokenPair.RefreshToken)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "token has been revoked")
 
 	mockRepo.AssertExpectations(t)
 }

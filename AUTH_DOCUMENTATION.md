@@ -12,7 +12,9 @@ The GoForward authentication system provides comprehensive user management with 
 - **JWT Token Management**: Access and refresh tokens with configurable expiration
 - **Email & SMS Integration**: Automated messaging with purpose-specific templates
 - **User Verification**: Email and phone verification workflows
-- **Password Management**: Secure hashing and password reset functionality
+- **Password Management**: Secure hashing and OTP-based password reset
+- **Advanced Security**: Token blacklisting, rate limiting, and secure OTP storage
+- **Smart API Design**: Purpose inference from endpoints for cleaner requests
 
 ## Authentication Endpoints
 
@@ -187,6 +189,15 @@ Authorization: Bearer <access_token>
 }
 ```
 
+**Response:**
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+**Security Note**: This endpoint blacklists both access and refresh tokens to prevent further use, even if they haven't expired yet.
+
 ## OTP System Details
 
 ### Purpose-Specific Messages
@@ -225,12 +236,20 @@ Authorization: Bearer <access_token>
 ✉️ AppName Email Verification: 123456. This code expires in 10 minutes. Verify your email to secure your account.
 ```
 
+**Password Reset OTP:**
+```
+🔒 AppName Password Reset Code: 123456. This code expires in 10 minutes. If you didn't request this, please secure your account immediately.
+```
+
 ### OTP Security Features
 
+- **Secure Storage**: OTPs are hashed with cryptographic salt before database storage
 - **Expiration**: 10 minutes default
 - **Attempt Limiting**: Maximum 3 attempts per OTP
+- **Rate Limiting**: Maximum 10 OTP requests per hour per recipient
 - **Purpose Isolation**: OTPs can only be used for their intended purpose
 - **Endpoint Validation**: Each endpoint only accepts specific purposes
+- **Security Monitoring**: Failed attempts trigger automatic lockouts
 - **Auto-cleanup**: Expired and used OTPs are automatically cleaned up
 
 ## User Registration Scenarios
@@ -332,6 +351,28 @@ curl -X POST /auth/otp/login \
   -d '{"type":"sms","recipient":"+233123456789","code":"123456"}'
 ```
 
+### 4. Logout
+```bash
+# Logout and blacklist tokens
+curl -X POST /auth/logout \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{"refresh_token":"<refresh_token>"}'
+```
+
+### 5. Password Reset Flow
+```bash
+# 1. Request password reset (sends OTP)
+curl -X POST /auth/password-reset \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"user@example.com"}'
+
+# 2. Reset password with OTP
+curl -X POST /auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"user@example.com","otp_code":"123456","new_password":"newpassword123"}'
+```
+
 ## Error Handling
 
 ### Common Error Responses
@@ -375,6 +416,34 @@ curl -X POST /auth/otp/login \
 ```json
 {
   "error": "maximum attempts reached"
+}
+```
+
+#### Rate Limit Exceeded
+```json
+{
+  "error": "too many OTP requests. Please wait before requesting another OTP"
+}
+```
+
+#### Account Temporarily Locked
+```json
+{
+  "error": "account temporarily locked due to suspicious activity"
+}
+```
+
+#### Token Revoked
+```json
+{
+  "error": "token has been revoked"
+}
+```
+
+#### Invalid Password Reset
+```json
+{
+  "error": "invalid or expired OTP"
 }
 ```
 
@@ -439,9 +508,11 @@ auth:
 
 ### 🔑 JWT Security
 1. **Token Blacklisting**: Old refresh tokens are invalidated after use
-2. **Logout Support**: Tokens can be blacklisted on logout
-3. **Constant-time Comparison**: Prevents timing attacks
-4. **Automatic Cleanup**: Expired blacklisted tokens are removed
+2. **Unique Token IDs**: Each JWT has a unique JTI to prevent token collision
+3. **Logout Support**: Tokens can be blacklisted on logout
+4. **Constant-time Comparison**: Prevents timing attacks
+5. **Automatic Cleanup**: Expired blacklisted tokens are removed
+6. **Replay Attack Prevention**: Used refresh tokens cannot be reused
 
 ### 🛡️ Password Reset Security
 1. **OTP-based Reset**: No long-lived tokens, uses secure OTP system
@@ -472,7 +543,7 @@ CREATE TABLE users (
 CREATE TABLE otps (
     id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) REFERENCES users(id),
-    code VARCHAR(10) NOT NULL,
+    code_hash VARCHAR(128) NOT NULL, -- Hashed OTP code for security
     type VARCHAR(10) NOT NULL, -- 'email' or 'sms'
     purpose VARCHAR(20) NOT NULL, -- 'login', 'registration', 'verification'
     recipient VARCHAR(255) NOT NULL,
@@ -484,6 +555,56 @@ CREATE TABLE otps (
 );
 
 CREATE INDEX idx_otps_recipient_type_purpose ON otps(recipient, type, purpose);
+CREATE INDEX idx_otps_code_hash ON otps(code_hash) WHERE used = false;
+```
+
+**Security Note**: OTP codes are never stored in plain text. They are hashed with a cryptographic salt before being saved to the database.
+
+## Security Monitoring & Rate Limiting
+
+### Rate Limiting Rules
+
+The system implements comprehensive rate limiting to prevent abuse:
+
+- **OTP Requests**: Maximum 10 requests per hour per recipient
+- **Failed Attempts**: Maximum 5 failed OTP attempts before temporary lockout
+- **Lockout Duration**: 30 minutes for suspicious activity
+- **Automatic Cleanup**: Rate limit data is automatically cleaned up
+
+### Security Monitoring
+
+The system monitors for suspicious activities:
+
+```bash
+# Example: Too many OTP requests
+curl -X POST /auth/otp/send \
+  -d '{"type":"email","recipient":"user@example.com","purpose":"login"}'
+# After 10 requests in 1 hour: {"error": "too many OTP requests. Please wait before requesting another OTP"}
+
+# Example: Too many failed attempts
+curl -X POST /auth/otp/login \
+  -d '{"type":"email","recipient":"user@example.com","code":"wrong"}'
+# After 5 failed attempts: {"error": "too many failed attempts. Account temporarily locked for security"}
+```
+
+### Token Security Examples
+
+```bash
+# Refresh token becomes invalid after use
+curl -X POST /auth/refresh \
+  -d '{"refresh_token":"old_refresh_token"}'
+# Returns new tokens
+
+# Try to use old refresh token again
+curl -X POST /auth/refresh \
+  -d '{"refresh_token":"old_refresh_token"}'
+# Returns: {"error": "token has been revoked"}
+
+# Logout invalidates tokens
+curl -X POST /auth/logout \
+  -H "Authorization: Bearer access_token" \
+  -d '{"refresh_token":"refresh_token"}'
+# Both tokens are now blacklisted
 ```
 
 ## Testing Examples

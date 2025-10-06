@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // JWTManager handles JWT token operations
@@ -69,11 +70,15 @@ func (jm *JWTManager) generateToken(user *User, tokenType string, expiration tim
 	now := time.Now()
 	expiresAt := now.Add(expiration)
 
+	// Generate unique JTI to ensure token uniqueness
+	jti := uuid.New().String()
+
 	// Create claims
 	claims := &Claims{
 		UserID:    user.ID,
 		TokenType: tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti, // Unique token ID
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			NotBefore: jwt.NewNumericDate(now),
@@ -178,13 +183,18 @@ func (jm *JWTManager) RefreshTokenPair(refreshTokenString string, user *User) (*
 		return nil, fmt.Errorf("invalid refresh token: %w", err)
 	}
 
-	// Blacklist the old refresh token to prevent reuse
+	// Generate new token pair first
+	newTokenPair, err := jm.GenerateTokenPair(user)
+	if err != nil {
+		return nil, err
+	}
+
+	// Blacklist the old refresh token to prevent reuse (after successful generation)
 	if claims.ExpiresAt != nil {
 		jm.blacklist.BlacklistToken(refreshTokenString, claims.ExpiresAt.Time)
 	}
 
-	// Generate new token pair
-	return jm.GenerateTokenPair(user)
+	return newTokenPair, nil
 }
 
 // ExtractUserID extracts user ID from a token without full validation
