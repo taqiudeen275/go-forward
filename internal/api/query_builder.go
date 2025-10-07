@@ -220,7 +220,9 @@ func (qpp *QueryParameterParser) parseWhereConditions(c *gin.Context, qb *QueryB
 		// Simple equality filter
 		if value := c.Query(col.Name); value != "" {
 			condition := fmt.Sprintf("%s = $%d", col.Name, qb.argIndex)
-			qb.Where(condition, value)
+			qb.argIndex++
+			qb.whereConds = append(qb.whereConds, condition)
+			qb.args = append(qb.args, value)
 		}
 
 		// Range filters for numeric/date columns
@@ -228,25 +230,33 @@ func (qpp *QueryParameterParser) parseWhereConditions(c *gin.Context, qb *QueryB
 			// Greater than filter
 			if value := c.Query(col.Name + "_gt"); value != "" {
 				condition := fmt.Sprintf("%s > $%d", col.Name, qb.argIndex)
-				qb.Where(condition, value)
+				qb.argIndex++
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, value)
 			}
 
 			// Greater than or equal filter
 			if value := c.Query(col.Name + "_gte"); value != "" {
 				condition := fmt.Sprintf("%s >= $%d", col.Name, qb.argIndex)
-				qb.Where(condition, value)
+				qb.argIndex++
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, value)
 			}
 
 			// Less than filter
 			if value := c.Query(col.Name + "_lt"); value != "" {
 				condition := fmt.Sprintf("%s < $%d", col.Name, qb.argIndex)
-				qb.Where(condition, value)
+				qb.argIndex++
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, value)
 			}
 
 			// Less than or equal filter
 			if value := c.Query(col.Name + "_lte"); value != "" {
 				condition := fmt.Sprintf("%s <= $%d", col.Name, qb.argIndex)
-				qb.Where(condition, value)
+				qb.argIndex++
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, value)
 			}
 		}
 
@@ -255,25 +265,33 @@ func (qpp *QueryParameterParser) parseWhereConditions(c *gin.Context, qb *QueryB
 			// LIKE filter (case-insensitive)
 			if value := c.Query(col.Name + "_like"); value != "" {
 				condition := fmt.Sprintf("LOWER(%s) LIKE LOWER($%d)", col.Name, qb.argIndex)
-				qb.Where(condition, "%"+value+"%")
+				qb.argIndex++
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, "%"+value+"%")
 			}
 
 			// ILIKE filter (PostgreSQL case-insensitive LIKE)
 			if value := c.Query(col.Name + "_ilike"); value != "" {
 				condition := fmt.Sprintf("%s ILIKE $%d", col.Name, qb.argIndex)
-				qb.Where(condition, "%"+value+"%")
+				qb.argIndex++
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, "%"+value+"%")
 			}
 
 			// Starts with filter
 			if value := c.Query(col.Name + "_starts"); value != "" {
 				condition := fmt.Sprintf("%s ILIKE $%d", col.Name, qb.argIndex)
-				qb.Where(condition, value+"%")
+				qb.argIndex++
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, value+"%")
 			}
 
 			// Ends with filter
 			if value := c.Query(col.Name + "_ends"); value != "" {
 				condition := fmt.Sprintf("%s ILIKE $%d", col.Name, qb.argIndex)
-				qb.Where(condition, "%"+value)
+				qb.argIndex++
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, "%"+value)
 			}
 		}
 
@@ -288,15 +306,19 @@ func (qpp *QueryParameterParser) parseWhereConditions(c *gin.Context, qb *QueryB
 					args[i] = strings.TrimSpace(v)
 				}
 				condition := fmt.Sprintf("%s IN (%s)", col.Name, strings.Join(placeholders, ", "))
-				qb.Where(condition, args...)
+				qb.argIndex += len(values)
+				qb.whereConds = append(qb.whereConds, condition)
+				qb.args = append(qb.args, args...)
 			}
 		}
 
 		// NOT NULL / IS NULL filters
 		if c.Query(col.Name+"_null") == "false" {
-			qb.Where(fmt.Sprintf("%s IS NOT NULL", col.Name))
+			condition := fmt.Sprintf("%s IS NOT NULL", col.Name)
+			qb.whereConds = append(qb.whereConds, condition)
 		} else if c.Query(col.Name+"_null") == "true" {
-			qb.Where(fmt.Sprintf("%s IS NULL", col.Name))
+			condition := fmt.Sprintf("%s IS NULL", col.Name)
+			qb.whereConds = append(qb.whereConds, condition)
 		}
 	}
 }
@@ -359,13 +381,17 @@ func (qpp *QueryParameterParser) isNumericOrDateColumn(col *interfaces.Column) b
 
 // isStringColumn checks if a column is a string type
 func (qpp *QueryParameterParser) isStringColumn(col *interfaces.Column) bool {
+	lowerType := strings.ToLower(col.Type)
+	baseType := strings.Split(lowerType, "(")[0]
+
 	stringTypes := map[string]bool{
-		"text":    true,
-		"varchar": true,
-		"char":    true,
-		"bpchar":  true,
+		"text":              true,
+		"varchar":           true,
+		"character varying": true,
+		"char":              true,
+		"character":         true,
+		"bpchar":            true,
 	}
 
-	baseType := strings.Split(strings.ToLower(col.Type), "(")[0]
 	return stringTypes[baseType]
 }

@@ -197,12 +197,12 @@ func (s *Service) registerAuthenticatedRoutes(config *EndpointConfig, authMiddle
 	}
 
 	// PUT /api/v1/table/:id - Update record
-	if authConfig.RequireAuth {
+	if authConfig.PublicWrite || authConfig.RequireAuth {
 		s.router.PUT(basePath+"/:id", middleware, config.Handlers["PUT"])
 	}
 
 	// DELETE /api/v1/table/:id - Delete record
-	if authConfig.RequireAuth {
+	if authConfig.PublicWrite || authConfig.RequireAuth {
 		s.router.DELETE(basePath+"/:id", middleware, config.Handlers["DELETE"])
 	}
 }
