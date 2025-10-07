@@ -38,7 +38,7 @@ Commands:
 
 Options:
   -migrations string    Path to migrations directory (default "./migrations")
-  -format string        Output format: table, json (default "table")
+  -format=string        Output format: table, json (default "table")
   -verbose              Enable verbose output
   -dry-run              Show what would be done without executing
 
@@ -50,7 +50,9 @@ Examples:
   migrate create add_users_table                # Create new migration
   migrate create-from-template add_users_table create_table TableName=users
   migrate status                                # Show migration status
+  migrate -format=json status                   # Show migration status in JSON
   migrate history                               # Show migration history
+  migrate -verbose up                           # Apply migrations with verbose output
 `
 )
 
@@ -116,18 +118,64 @@ func main() {
 		format:           *format,
 	}
 
-	// Parse command
-	args := flag.Args()
-	if len(args) == 0 {
+	// Parse command and remaining args
+	allArgs := os.Args[1:] // Skip program name
+	if len(allArgs) == 0 {
 		fmt.Print(usageText)
 		os.Exit(1)
 	}
 
-	command := args[0]
-	commandArgs := args[1:]
+	// Find the command (first non-flag argument)
+	var command string
+	var commandArgs []string
+
+	for i, arg := range allArgs {
+		if !strings.HasPrefix(arg, "-") {
+			command = arg
+			commandArgs = allArgs[i+1:]
+			break
+		}
+	}
+
+	if command == "" {
+		fmt.Print(usageText)
+		os.Exit(1)
+	}
+
+	// Parse remaining flags from command args
+	remainingFlags := []string{}
+	actualCommandArgs := []string{}
+
+	for _, arg := range commandArgs {
+		if strings.HasPrefix(arg, "-") {
+			remainingFlags = append(remainingFlags, arg)
+		} else {
+			actualCommandArgs = append(actualCommandArgs, arg)
+		}
+	}
+
+	// Parse remaining flags
+	for _, flagArg := range remainingFlags {
+		switch {
+		case flagArg == "-verbose":
+			*verbose = true
+		case flagArg == "-dry-run":
+			*dryRun = true
+		case strings.HasPrefix(flagArg, "-format="):
+			*format = strings.TrimPrefix(flagArg, "-format=")
+		case flagArg == "-format" && len(remainingFlags) > 1:
+			// Handle -format json (separate arguments)
+			for i, f := range remainingFlags {
+				if f == "-format" && i+1 < len(remainingFlags) && !strings.HasPrefix(remainingFlags[i+1], "-") {
+					*format = remainingFlags[i+1]
+					break
+				}
+			}
+		}
+	}
 
 	// Execute command
-	if err := cli.executeCommand(command, commandArgs); err != nil {
+	if err := cli.executeCommand(command, actualCommandArgs); err != nil {
 		log.Fatalf("Command failed: %v", err)
 	}
 }
