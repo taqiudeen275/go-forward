@@ -498,7 +498,7 @@ migration, err := migrationService.CreateMigration(
 
 ```go
 // Apply all pending migrations
-err := migrationService.ApplyMigrations()
+results, err := migrationService.ApplyMigrations()
 
 // Apply specific migration
 err := migrationService.ApplyMigration(20240115123000)

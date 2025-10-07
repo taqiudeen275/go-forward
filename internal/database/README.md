@@ -42,7 +42,7 @@ Handles database schema migrations:
 migrationService := database.NewMigrationService(db, "migrations")
 
 // Apply all pending migrations
-err := migrationService.ApplyMigrations()
+results, err := migrationService.ApplyMigrations()
 
 // Create a new migration
 migration, err := migrationService.CreateMigration(

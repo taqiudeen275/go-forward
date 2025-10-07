@@ -63,7 +63,8 @@ func NewService(config *Config) (*Service, error) {
 // Initialize sets up the database with initial schema
 func (s *Service) Initialize(ctx context.Context) error {
 	// Apply initial migrations
-	if err := s.Migration.ApplyMigrations(); err != nil {
+	_, err := s.Migration.ApplyMigrations()
+	if err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
