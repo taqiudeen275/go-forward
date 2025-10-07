@@ -1,6 +1,9 @@
 package server
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/taqiudeen275/go-foward/internal/api"
 	"github.com/taqiudeen275/go-foward/internal/auth"
 	"github.com/taqiudeen275/go-foward/internal/config"
@@ -11,6 +14,7 @@ import (
 	"github.com/taqiudeen275/go-foward/internal/realtime"
 	"github.com/taqiudeen275/go-foward/internal/sms"
 	"github.com/taqiudeen275/go-foward/internal/storage"
+	"github.com/taqiudeen275/go-foward/pkg/interfaces"
 	"github.com/taqiudeen275/go-foward/pkg/logger"
 )
 
@@ -115,6 +119,12 @@ func (s *Server) Start() error {
 	// Setup middleware
 	s.setupMiddleware()
 
+	// Generate API endpoints automatically
+	if err := s.generateAPIEndpoints(); err != nil {
+		s.logger.Error("Failed to generate API endpoints: %v", err)
+		return err
+	}
+
 	// Register services
 	s.registerServices()
 
@@ -166,4 +176,60 @@ func (s *Server) registerServices() {
 	}
 
 	s.logger.Info("All services registered successfully")
+}
+
+// generateAPIEndpoints automatically generates CRUD endpoints from database schema
+func (s *Server) generateAPIEndpoints() error {
+	ctx := context.Background()
+
+	// Get all tables from the public schema
+	tables, err := s.metaService.GetTables(ctx, "public")
+	if err != nil {
+		return fmt.Errorf("failed to get database tables: %w", err)
+	}
+
+	// Create a schema structure for the API service
+	schema := interfaces.DatabaseSchema{
+		Tables: make([]*interfaces.Table, len(tables)),
+	}
+
+	// Convert database tables to interface tables
+	for i, table := range tables {
+		interfaceTable := &interfaces.Table{
+			Name:    table.Name,
+			Schema:  table.Schema,
+			Columns: make([]*interfaces.Column, len(table.Columns)),
+		}
+
+		// Convert columns
+		for j, col := range table.Columns {
+			maxLength := 0
+			if col.MaxLength != nil {
+				maxLength = *col.MaxLength
+			}
+
+			interfaceTable.Columns[j] = &interfaces.Column{
+				Name:         col.Name,
+				Type:         col.Type,
+				Nullable:     col.Nullable,
+				DefaultValue: &col.DefaultValue,
+				IsPrimaryKey: col.IsPrimaryKey,
+				IsForeignKey: col.IsForeignKey,
+				MaxLength:    maxLength,
+			}
+		}
+
+		schema.Tables[i] = interfaceTable
+	}
+
+	// Generate endpoints with authentication
+	jwtManager := s.authService.GetJWTManager()
+	authMiddleware := auth.NewMiddleware(jwtManager, s.authService)
+	err = s.apiService.GenerateEndpointsWithAuth(ctx, schema, authMiddleware)
+	if err != nil {
+		return fmt.Errorf("failed to generate endpoints: %w", err)
+	}
+
+	s.logger.Info("API endpoints generated successfully for %d tables", len(tables))
+	return nil
 }
