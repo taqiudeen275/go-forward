@@ -136,26 +136,22 @@ func (s *Service) GetRouter() *gin.Engine {
 
 // RegisterRoutes registers API service routes with the gateway
 func (s *Service) RegisterRoutes(router gin.IRouter) {
-	// Mount all generated endpoints under /api/v1
-	apiGroup := router.Group("/api/v1")
-
-	// Register all existing routes from our internal router
+	// Register all routes from the internal router to the gateway router
+	// This handles both authenticated and non-authenticated endpoints
 	for _, route := range s.router.Routes() {
-		// Extract the path without the /api/v1 prefix if it exists
-		path := strings.TrimPrefix(route.Path, "/api/v1")
-
-		// Register the route with the gateway
+		// The internal router already has the correct paths (e.g., /api/v1/products)
+		// Register them directly with the gateway router
 		switch route.Method {
 		case "GET":
-			apiGroup.GET(path, route.HandlerFunc)
+			router.GET(route.Path, route.HandlerFunc)
 		case "POST":
-			apiGroup.POST(path, route.HandlerFunc)
+			router.POST(route.Path, route.HandlerFunc)
 		case "PUT":
-			apiGroup.PUT(path, route.HandlerFunc)
+			router.PUT(route.Path, route.HandlerFunc)
 		case "DELETE":
-			apiGroup.DELETE(path, route.HandlerFunc)
+			router.DELETE(route.Path, route.HandlerFunc)
 		case "PATCH":
-			apiGroup.PATCH(path, route.HandlerFunc)
+			router.PATCH(route.Path, route.HandlerFunc)
 		}
 	}
 }

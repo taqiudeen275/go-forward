@@ -222,6 +222,21 @@ func (s *Server) generateAPIEndpoints() error {
 		schema.Tables[i] = interfaceTable
 	}
 
+	// Configure authentication for tables
+	// For now, allow public read/write access to all tables for testing
+	// In production, you should configure proper authentication per table
+	for _, table := range schema.Tables {
+		s.apiService.SetTableAuthConfig(table.Name, &api.AuthConfig{
+			RequireAuth:      false,
+			RequireVerified:  false,
+			AllowedRoles:     []string{},
+			RequireOwnership: false,
+			OwnershipColumn:  "",
+			PublicRead:       true,
+			PublicWrite:      true, // Allow public write for testing
+		})
+	}
+
 	// Generate endpoints with authentication
 	jwtManager := s.authService.GetJWTManager()
 	authMiddleware := auth.NewMiddleware(jwtManager, s.authService)

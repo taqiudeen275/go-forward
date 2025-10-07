@@ -246,11 +246,25 @@ func (s *Service) buildInsertQuery(table *interfaces.Table, data map[string]inte
 	argIndex := 1
 
 	for _, col := range table.Columns {
-		if value, exists := data[col.Name]; exists && !col.IsPrimaryKey {
-			columns = append(columns, col.Name)
-			placeholders = append(placeholders, fmt.Sprintf("$%d", argIndex))
-			args = append(args, value)
-			argIndex++
+		value, exists := data[col.Name]
+
+		// Include column if:
+		// 1. Value is provided in request data, OR
+		// 2. Column is not primary key, OR
+		// 3. Primary key is provided explicitly by user
+		if exists {
+			// If it's a primary key and user provided a value, include it
+			// If it's not a primary key, include it
+			// Skip auto-generated primary keys without user values
+			if !col.IsPrimaryKey || (col.IsPrimaryKey && value != nil) {
+				columns = append(columns, col.Name)
+				placeholders = append(placeholders, fmt.Sprintf("$%d", argIndex))
+				args = append(args, value)
+				argIndex++
+			}
+		} else if !col.IsPrimaryKey && !col.Nullable && col.DefaultValue == nil {
+			// This is a required field that wasn't provided
+			return interfaces.Query{}, fmt.Errorf("required field '%s' is missing", col.Name)
 		}
 	}
 
@@ -348,12 +362,19 @@ func (s *Service) validateCreateData(table *interfaces.Table, data map[string]in
 	for _, col := range table.Columns {
 		value, exists := data[col.Name]
 
-		// Skip primary key columns (usually auto-generated)
+		// For primary key columns
 		if col.IsPrimaryKey {
+			// If user provided a value, validate it
+			if exists && value != nil {
+				if err := s.validateColumnValue(col, value); err != nil {
+					return fmt.Errorf("invalid value for field '%s': %w", col.Name, err)
+				}
+			}
+			// Skip required field check for auto-generated primary keys
 			continue
 		}
 
-		// Check required fields
+		// Check required fields (non-primary key columns)
 		if !col.Nullable && !exists && col.DefaultValue == nil {
 			return fmt.Errorf("field '%s' is required", col.Name)
 		}
