@@ -183,52 +183,64 @@ export class DatabaseClient {
     }
 
     async executeSQL(query: string, args?: any[]): Promise<QueryResult> {
-        // Start with minimal request structure
-        const requestBody: any = {
-            query: query.trim()
-        };
+        const cleanQuery = query.trim();
 
-        // Add args only if provided
-        if (args && args.length > 0) {
-            requestBody.args = args;
-        } else {
-            requestBody.args = [];
-        }
-
-        // Add options - try without timeout first
-        requestBody.options = {
-            max_rows: 1000,
-            read_only: false,
-            transaction: false
-        };
-
-        console.log('Executing SQL request:', JSON.stringify(requestBody, null, 2));
+        // Try the exact structure from Postman example first
+        console.log('Trying Postman-style request...');
+        const postmanBody = { query: cleanQuery };
+        console.log('Request body:', JSON.stringify(postmanBody, null, 2));
 
         try {
             const result = await this.request<QueryResult>('/database/sql/execute', {
                 method: 'POST',
-                body: JSON.stringify(requestBody),
+                body: JSON.stringify(postmanBody),
             });
-            console.log('SQL result:', result);
+            console.log('Postman-style success:', result);
             return result;
         } catch (error) {
-            console.error('SQL execution error:', error);
+            console.error('Postman-style failed:', error);
 
-            // Try with even simpler structure
-            console.log('Retrying with minimal structure...');
-            const minimalBody = { query: query.trim() };
-            console.log('Minimal request:', JSON.stringify(minimalBody, null, 2));
+            // If that fails, try with args if provided
+            if (args && args.length > 0) {
+                console.log('Trying with args...');
+                const argsBody = { query: cleanQuery, args };
+                console.log('Args request body:', JSON.stringify(argsBody, null, 2));
+
+                try {
+                    const result = await this.request<QueryResult>('/database/sql/execute', {
+                        method: 'POST',
+                        body: JSON.stringify(argsBody),
+                    });
+                    console.log('Args request success:', result);
+                    return result;
+                } catch (argsError) {
+                    console.error('Args request failed:', argsError);
+                }
+            }
+
+            // If all else fails, try the full documentation structure
+            console.log('Trying full documentation structure...');
+            const fullBody = {
+                query: cleanQuery,
+                args: args || [],
+                options: {
+                    max_rows: 1000,
+                    read_only: false,
+                    transaction: false
+                }
+            };
+            console.log('Full request body:', JSON.stringify(fullBody, null, 2));
 
             try {
                 const result = await this.request<QueryResult>('/database/sql/execute', {
                     method: 'POST',
-                    body: JSON.stringify(minimalBody),
+                    body: JSON.stringify(fullBody),
                 });
-                console.log('Minimal SQL result:', result);
+                console.log('Full request success:', result);
                 return result;
-            } catch (minimalError) {
-                console.error('Minimal SQL execution also failed:', minimalError);
-                throw error; // Throw original error
+            } catch (fullError) {
+                console.error('Full request failed:', fullError);
+                throw error; // Throw the original error
             }
         }
     }
