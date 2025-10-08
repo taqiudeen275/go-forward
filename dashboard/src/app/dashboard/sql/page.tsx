@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { QueryResult, databaseClient, DatabaseError } from '@/lib/database';
+import '@/lib/debug-database'; // Add debug functions to window
+import { DatabaseDebug } from '@/components/debug/database-debug';
 import { Play, Download, Clock, Database, AlertCircle } from 'lucide-react';
 
 export default function SQLEditorPage() {
@@ -115,6 +117,9 @@ export default function SQLEditorPage() {
                             Execute SQL queries directly against your database
                         </p>
                     </div>
+
+                    {/* Debug component - remove this after testing */}
+                    <DatabaseDebug />
 
                     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                         <div className="lg:col-span-3 space-y-6">

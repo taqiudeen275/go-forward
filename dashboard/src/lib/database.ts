@@ -104,6 +104,9 @@ export class DatabaseClient {
         const url = `${this.baseUrl}${endpoint}`;
         const token = this.getStoredToken();
 
+        console.log(`Making request to: ${url}`);
+        console.log(`With token: ${token ? 'Yes' : 'No'}`);
+
         const response = await fetch(url, {
             ...options,
             headers: {
@@ -113,12 +116,25 @@ export class DatabaseClient {
             },
         });
 
+        console.log(`Response status: ${response.status}`);
+
         if (!response.ok) {
-            const error = await response.json().catch(() => ({ message: 'Unknown error' }));
-            throw new DatabaseError(error.message, error.code || 'UNKNOWN_ERROR', response.status);
+            const errorText = await response.text();
+            console.log(`Error response: ${errorText}`);
+
+            let error;
+            try {
+                error = JSON.parse(errorText);
+            } catch {
+                error = { message: errorText || 'Unknown error' };
+            }
+
+            throw new DatabaseError(error.message || error.error || 'Unknown error', error.code || 'UNKNOWN_ERROR', response.status);
         }
 
-        return response.json();
+        const result = await response.json();
+        console.log(`Response data:`, result);
+        return result;
     }
 
     private getStoredToken(): string | null {
@@ -167,19 +183,54 @@ export class DatabaseClient {
     }
 
     async executeSQL(query: string, args?: any[]): Promise<QueryResult> {
-        return this.request<QueryResult>('/database/sql/execute', {
-            method: 'POST',
-            body: JSON.stringify({
-                query,
-                args: args || [],
-                options: {
-                    max_rows: 1000,
-                    timeout: "30s",
-                    read_only: false,
-                    transaction: false
-                }
-            }),
-        });
+        // Start with minimal request structure
+        const requestBody: any = {
+            query: query.trim()
+        };
+
+        // Add args only if provided
+        if (args && args.length > 0) {
+            requestBody.args = args;
+        } else {
+            requestBody.args = [];
+        }
+
+        // Add options - try without timeout first
+        requestBody.options = {
+            max_rows: 1000,
+            read_only: false,
+            transaction: false
+        };
+
+        console.log('Executing SQL request:', JSON.stringify(requestBody, null, 2));
+
+        try {
+            const result = await this.request<QueryResult>('/database/sql/execute', {
+                method: 'POST',
+                body: JSON.stringify(requestBody),
+            });
+            console.log('SQL result:', result);
+            return result;
+        } catch (error) {
+            console.error('SQL execution error:', error);
+
+            // Try with even simpler structure
+            console.log('Retrying with minimal structure...');
+            const minimalBody = { query: query.trim() };
+            console.log('Minimal request:', JSON.stringify(minimalBody, null, 2));
+
+            try {
+                const result = await this.request<QueryResult>('/database/sql/execute', {
+                    method: 'POST',
+                    body: JSON.stringify(minimalBody),
+                });
+                console.log('Minimal SQL result:', result);
+                return result;
+            } catch (minimalError) {
+                console.error('Minimal SQL execution also failed:', minimalError);
+                throw error; // Throw original error
+            }
+        }
     }
 
     async getTableData(
