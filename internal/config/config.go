@@ -18,6 +18,7 @@ type Config struct {
 	Realtime  RealtimeConfig  `yaml:"realtime"`
 	Dashboard DashboardConfig `yaml:"dashboard"`
 	Logging   LoggingConfig   `yaml:"logging"`
+	Plugins   PluginsConfig   `yaml:"plugins"`
 }
 
 // ServerConfig represents server configuration
@@ -223,23 +224,35 @@ type SocialProviderConfig struct {
 
 // Load loads configuration from file and environment variables
 func Load() (*Config, error) {
-	config := getDefaultConfig()
+	return LoadWithPrefix("GOFORWARD")
+}
 
-	// Load from config file
-	configPath := getConfigPath()
-	if _, err := os.Stat(configPath); err == nil {
-		if err := loadFromFile(config, configPath); err != nil {
-			return nil, fmt.Errorf("failed to load config from file: %w", err)
-		}
+// LoadWithPrefix loads configuration with a custom environment variable prefix
+func LoadWithPrefix(envPrefix string) (*Config, error) {
+	loader := NewConfigLoader(envPrefix)
+	config, err := loader.LoadConfig()
+	if err != nil {
+		return nil, err
 	}
 
-	// Override with environment variables
-	loadFromEnv(config)
+	// Apply defaults for any missing values
+	ApplyDefaults(config)
 
-	// Validate configuration
-	if err := validate(config); err != nil {
-		return nil, fmt.Errorf("invalid configuration: %w", err)
+	return config, nil
+}
+
+// LoadFromPath loads configuration from a specific file path
+func LoadFromPath(configPath string) (*Config, error) {
+	loader := NewConfigLoader("GOFORWARD")
+	loader.AddConfigPath(configPath)
+
+	config, err := loader.LoadConfig()
+	if err != nil {
+		return nil, err
 	}
+
+	// Apply defaults for any missing values
+	ApplyDefaults(config)
 
 	return config, nil
 }
@@ -401,6 +414,7 @@ func getDefaultConfig() *Config {
 			MaxBackups: 3,
 			MaxAge:     28,
 		},
+		Plugins: GetDefaultPluginsConfig(),
 	}
 }
 
@@ -549,30 +563,10 @@ func loadFromEnv(config *Config) {
 	}
 }
 
-// validate validates the configuration
+// validate validates the configuration using the comprehensive validator
 func validate(config *Config) error {
-	if config.Server.Port <= 0 || config.Server.Port > 65535 {
-		return fmt.Errorf("invalid server port: %d", config.Server.Port)
-	}
-
-	if config.Database.Port <= 0 || config.Database.Port > 65535 {
-		return fmt.Errorf("invalid database port: %d", config.Database.Port)
-	}
-
-	if config.Auth.JWTSecret == "" {
-		return fmt.Errorf("JWT secret is required")
-	}
-
-	if config.Auth.PasswordMinLength < 4 {
-		return fmt.Errorf("password minimum length must be at least 4")
-	}
-
-	// Validate custom auth providers
-	if err := ValidateCustomAuthProviders(&config.Auth.CustomProviders); err != nil {
-		return fmt.Errorf("custom auth provider validation failed: %w", err)
-	}
-
-	return nil
+	validator := NewConfigValidator()
+	return validator.Validate(config)
 }
 
 // parsePort parses port string to integer

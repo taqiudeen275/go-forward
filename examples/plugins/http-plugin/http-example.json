@@ -1,0 +1,16 @@
+{
+    "name": "http-example",
+    "version": "1.0.0",
+    "description": "Example HTTP plugin that provides custom endpoints and middleware",
+    "author": "Go Forward Team",
+    "license": "MIT",
+    "homepage": "https://github.com/taqiudeen275/go-forward",
+    "repository": "https://github.com/taqiudeen275/go-forward",
+    "dependencies": [],
+    "config": {
+        "enable_logging": true,
+        "enable_cors": true,
+        "custom_message": "Hello from plugin configuration!"
+    },
+    "enabled": true
+}
