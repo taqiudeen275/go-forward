@@ -92,8 +92,13 @@ export default function CreateTablePage() {
             const request: CreateTableRequest = {
                 name: data.name,
                 schema: data.schema,
-                columns: data.columns,
-                primaryKey: data.primaryKey?.length ? data.primaryKey : undefined,
+                columns: data.columns.map(col => ({
+                    name: col.name,
+                    type: col.type,
+                    nullable: col.nullable,
+                    default_value: col.defaultValue || undefined,
+                    is_primary_key: data.primaryKey?.includes(col.name) || false,
+                })),
             };
 
             await databaseClient.createTable(request);

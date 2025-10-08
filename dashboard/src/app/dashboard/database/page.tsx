@@ -150,7 +150,7 @@ export default function DatabasePage() {
                                         <div className="flex items-center justify-between">
                                             <CardTitle className="text-lg">{table.name}</CardTitle>
                                             <div className="flex items-center space-x-1">
-                                                {table.rlsEnabled && (
+                                                {table.rls_enabled && (
                                                     <Badge variant="secondary" className="text-xs">
                                                         RLS
                                                     </Badge>
@@ -162,7 +162,7 @@ export default function DatabasePage() {
                                         </div>
                                         <CardDescription>
                                             {table.columns.length} columns
-                                            {table.rowCount !== undefined && ` • ${table.rowCount} rows`}
+
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent>
@@ -177,7 +177,7 @@ export default function DatabasePage() {
                                                                 <Badge variant="outline" className="text-xs">
                                                                     {column.type}
                                                                 </Badge>
-                                                                {column.isPrimaryKey && (
+                                                                {column.is_primary_key && (
                                                                     <Badge variant="default" className="text-xs">
                                                                         PK
                                                                     </Badge>

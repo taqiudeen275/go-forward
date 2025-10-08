@@ -2,25 +2,31 @@ export interface Column {
     name: string;
     type: string;
     nullable: boolean;
-    defaultValue?: string;
-    isPrimaryKey: boolean;
-    isForeignKey: boolean;
-    foreignKeyTable?: string;
-    foreignKeyColumn?: string;
+    default_value?: string;
+    is_primary_key: boolean;
+    is_foreign_key: boolean;
+    is_unique: boolean;
+    ordinal_position: number;
+    max_length?: number;
+    comment?: string;
 }
 
 export interface Index {
     name: string;
+    table_name: string;
     columns: string[];
-    unique: boolean;
+    is_unique: boolean;
+    is_primary: boolean;
+    index_type: string;
 }
 
 export interface Constraint {
     name: string;
     type: 'PRIMARY KEY' | 'FOREIGN KEY' | 'UNIQUE' | 'CHECK';
+    table_name: string;
     columns: string[];
-    referencedTable?: string;
-    referencedColumns?: string[];
+    referenced_table?: string;
+    referenced_columns?: string[];
 }
 
 export interface Table {
@@ -29,35 +35,48 @@ export interface Table {
     columns: Column[];
     indexes: Index[];
     constraints: Constraint[];
-    rlsEnabled: boolean;
-    rowCount?: number;
+    rls_enabled: boolean;
+    comment?: string;
 }
 
 export interface CreateTableRequest {
     name: string;
     schema?: string;
-    columns: Omit<Column, 'isPrimaryKey' | 'isForeignKey'>[];
-    primaryKey?: string[];
-    indexes?: Omit<Index, 'name'>[];
+    comment?: string;
+    columns: {
+        name: string;
+        type: string;
+        nullable: boolean;
+        default_value?: string;
+        is_primary_key?: boolean;
+        comment?: string;
+    }[];
 }
 
 export interface UpdateTableRequest {
-    addColumns?: Omit<Column, 'isPrimaryKey' | 'isForeignKey'>[];
-    dropColumns?: string[];
-    modifyColumns?: {
+    add_columns?: {
         name: string;
-        newName?: string;
-        type?: string;
-        nullable?: boolean;
-        defaultValue?: string;
+        type: string;
+        nullable: boolean;
+        default_value?: string;
+        comment?: string;
     }[];
+    drop_columns?: string[];
+    modify_columns?: {
+        name: string;
+        new_type?: string;
+        set_comment?: string;
+    }[];
+    rename_columns?: Record<string, string>;
+    set_comment?: string;
 }
 
 export interface QueryResult {
     columns: string[];
     rows: Record<string, any>[];
-    rowCount: number;
-    executionTime: number;
+    rows_affected: number;
+    execution_time: string;
+    query_type: string;
 }
 
 export class DatabaseError extends Error {
@@ -217,10 +236,14 @@ export class DatabaseClient {
         data: Record<string, any>,
         schema: string = 'public'
     ): Promise<Record<string, any>> {
-        return this.request<Record<string, any>>(`/api/database/tables/${schema}/${tableName}/data`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
+        const columns = Object.keys(data);
+        const values = Object.values(data);
+        const placeholders = values.map((_, index) => `$${index + 1}`).join(', ');
+
+        const query = `INSERT INTO ${schema}.${tableName} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`;
+        const result = await this.executeSQL(query, values);
+
+        return result.rows[0] || {};
     }
 
     async updateTableData(
@@ -229,10 +252,14 @@ export class DatabaseClient {
         data: Record<string, any>,
         schema: string = 'public'
     ): Promise<Record<string, any>> {
-        return this.request<Record<string, any>>(`/api/database/tables/${schema}/${tableName}/data/${id}`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
+        const columns = Object.keys(data);
+        const values = Object.values(data);
+        const setClause = columns.map((col, index) => `${col} = $${index + 1}`).join(', ');
+
+        const query = `UPDATE ${schema}.${tableName} SET ${setClause} WHERE id = $${columns.length + 1} RETURNING *`;
+        const result = await this.executeSQL(query, [...values, id]);
+
+        return result.rows[0] || {};
     }
 
     async deleteTableData(
@@ -240,13 +267,37 @@ export class DatabaseClient {
         id: string | number,
         schema: string = 'public'
     ): Promise<void> {
-        await this.request(`/api/database/tables/${schema}/${tableName}/data/${id}`, {
-            method: 'DELETE',
-        });
+        const query = `DELETE FROM ${schema}.${tableName} WHERE id = $1`;
+        await this.executeSQL(query, [id]);
     }
 
     async getSchemas(): Promise<string[]> {
-        return this.request<string[]>('/api/database/schemas');
+        const response = await this.request<{ schemas: string[]; count: number }>('/database/schemas');
+        return response.schemas;
+    }
+
+    async getTableStats(tableName: string, schema: string = 'public'): Promise<{
+        table: Table;
+        row_count: number;
+        table_size: string;
+        index_size: string;
+        total_size: string;
+        column_count: number;
+        index_count: number;
+        constraint_count: number;
+    }> {
+        return this.request(`/database/tables/${schema}/${tableName}/stats`);
+    }
+
+    async validateSQL(query: string, readOnly: boolean = true): Promise<{
+        valid: boolean;
+        message?: string;
+        error?: string;
+    }> {
+        return this.request('/database/sql/validate', {
+            method: 'POST',
+            body: JSON.stringify({ query, read_only: readOnly }),
+        });
     }
 }
 

@@ -179,10 +179,10 @@ export default function SQLEditorPage() {
                                             <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                                                 <div className="flex items-center">
                                                     <Clock className="mr-1 h-4 w-4" />
-                                                    {result.executionTime}ms
+                                                    {result.execution_time}
                                                 </div>
                                                 <Badge variant="outline">
-                                                    {result.rowCount} rows
+                                                    {result.rows_affected || result.rows.length} rows
                                                 </Badge>
                                             </div>
                                         </div>
