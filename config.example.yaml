@@ -53,6 +53,101 @@ auth:
       account_sid: "your-twilio-account-sid"
       auth_token: "your-twilio-auth-token"
       from_number: "+1234567890"
+  
+  # Custom Authentication Providers
+  custom_providers:
+    # LDAP Authentication
+    ldap:
+      enabled: false
+      host: "ldap.example.com"
+      port: 389
+      use_ssl: false
+      skip_tls_verify: false
+      bind_dn: "cn=admin,dc=example,dc=com"
+      bind_password: "admin_password"
+      base_dn: "ou=users,dc=example,dc=com"
+      user_filter: "(uid=%s)"
+      email_attribute: "mail"
+      name_attribute: "cn"
+      username_attribute: "uid"
+      connection_timeout: "10s"
+      request_timeout: "30s"
+    
+    # API Key Authentication
+    api_key:
+      enabled: false
+      key_prefix: "gf_"
+      key_length: 32
+      hash_algorithm: "sha256"
+      cache_timeout: "5m"
+      allowed_scopes: ["read", "write", "admin"]
+      require_scopes: false
+    
+    # Social Authentication Providers
+    social:
+      # Google OAuth
+      google:
+        enabled: false
+        client_id: "your-google-client-id"
+        client_secret: "your-google-client-secret"
+        redirect_url: "https://yourapp.com/auth/callback/google"
+        scopes: ["openid", "email", "profile"]
+        auth_url: "https://accounts.google.com/o/oauth2/v2/auth"
+        token_url: "https://oauth2.googleapis.com/token"
+        user_info_url: "https://openidconnect.googleapis.com/v1/userinfo"
+        request_timeout: "30s"
+        allow_signup: true
+        require_verified: true
+      
+      # GitHub OAuth
+      github:
+        enabled: false
+        client_id: "your-github-client-id"
+        client_secret: "your-github-client-secret"
+        redirect_url: "https://yourapp.com/auth/callback/github"
+        scopes: ["user:email", "read:user"]
+        auth_url: "https://github.com/login/oauth/authorize"
+        token_url: "https://github.com/login/oauth/access_token"
+        user_info_url: "https://api.github.com/user"
+        request_timeout: "30s"
+        allow_signup: true
+        require_verified: true
+      
+      # Facebook OAuth
+      facebook:
+        enabled: false
+        client_id: "your-facebook-app-id"
+        client_secret: "your-facebook-app-secret"
+        redirect_url: "https://yourapp.com/auth/callback/facebook"
+        scopes: ["email", "public_profile"]
+        auth_url: "https://www.facebook.com/v18.0/dialog/oauth"
+        token_url: "https://graph.facebook.com/v18.0/oauth/access_token"
+        user_info_url: "https://graph.facebook.com/v18.0/me?fields=id,name,email,picture"
+        request_timeout: "30s"
+        allow_signup: true
+        require_verified: true
+      
+      # Twitter OAuth
+      twitter:
+        enabled: false
+        client_id: "your-twitter-client-id"
+        client_secret: "your-twitter-client-secret"
+        redirect_url: "https://yourapp.com/auth/callback/twitter"
+        scopes: ["tweet.read", "users.read"]
+        request_timeout: "30s"
+        allow_signup: true
+        require_verified: true
+      
+      # LinkedIn OAuth
+      linkedin:
+        enabled: false
+        client_id: "your-linkedin-client-id"
+        client_secret: "your-linkedin-client-secret"
+        redirect_url: "https://yourapp.com/auth/callback/linkedin"
+        scopes: ["r_liteprofile", "r_emailaddress"]
+        request_timeout: "30s"
+        allow_signup: true
+        require_verified: true
 
 storage:
   provider: "local" # local or s3
