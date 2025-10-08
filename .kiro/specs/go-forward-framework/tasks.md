@@ -351,7 +351,7 @@
 
 
 
-  - [ ] 10.3 Add CLI interface for migrations
+  - [x] 10.3 Add CLI interface for migrations
     - Create command-line interface for migration operations
     - Add migration generation commands
     - Implement migration status and history commands
