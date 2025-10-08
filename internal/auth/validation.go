@@ -333,3 +333,34 @@ func (v *Validator) ValidateVerifyOTPRequest(req *VerifyOTPRequest) error {
 
 	return nil
 }
+
+// ValidateCustomAuthRequest validates a custom authentication request
+func (v *Validator) ValidateCustomAuthRequest(req *CustomAuthRequest) error {
+	if req == nil {
+		return fmt.Errorf("request cannot be nil")
+	}
+
+	if strings.TrimSpace(req.Provider) == "" {
+		return fmt.Errorf("provider name cannot be empty")
+	}
+
+	if req.Credentials == nil {
+		return fmt.Errorf("credentials cannot be nil")
+	}
+
+	if len(req.Credentials) == 0 {
+		return fmt.Errorf("credentials cannot be empty")
+	}
+
+	// Provider name validation - alphanumeric, underscores, and hyphens only
+	providerRegex := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	if !providerRegex.MatchString(req.Provider) {
+		return fmt.Errorf("provider name can only contain letters, numbers, underscores, and hyphens")
+	}
+
+	if len(req.Provider) > 50 {
+		return fmt.Errorf("provider name too long (max 50 characters)")
+	}
+
+	return nil
+}

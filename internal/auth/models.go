@@ -132,3 +132,9 @@ type VerifyOTPRequest struct {
 	Recipient string  `json:"recipient" validate:"required"`
 	Code      string  `json:"code" validate:"required,len=6"`
 }
+
+// CustomAuthRequest represents a request for custom authentication
+type CustomAuthRequest struct {
+	Provider    string                 `json:"provider" validate:"required"`
+	Credentials map[string]interface{} `json:"credentials" validate:"required"`
+}

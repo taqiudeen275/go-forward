@@ -46,6 +46,7 @@ type ValidatorInterface interface {
 	ValidatePasswordResetConfirmRequest(req *PasswordResetConfirmRequest) error
 	ValidateOTPRequest(req *OTPRequest) error
 	ValidateVerifyOTPRequest(req *VerifyOTPRequest) error
+	ValidateCustomAuthRequest(req *CustomAuthRequest) error
 	ValidateEmail(email string) error
 	ValidatePhone(phone string) error
 	ValidateUsername(username string) error
@@ -76,4 +77,14 @@ type AuthServiceInterface interface {
 	VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*User, error)
 	LoginWithOTP(ctx context.Context, req *VerifyOTPRequest) (*AuthResponse, error)
 	RegisterWithOTP(ctx context.Context, req *VerifyOTPRequest, password *string) (*AuthResponse, error)
+
+	// Custom Auth Provider operations
+	RegisterCustomAuthProvider(provider CustomAuthProvider) error
+	UnregisterCustomAuthProvider(name string) error
+	GetCustomAuthProvider(name string) (CustomAuthProvider, error)
+	ListCustomAuthProviders() map[string]CustomAuthProvider
+	GetEnabledCustomAuthProviders() map[string]CustomAuthProvider
+	GetCustomAuthProviderInfo(providerName string) (map[string]interface{}, error)
+	ValidateCustomAuthCredentials(providerName string, credentials map[string]interface{}) error
+	AuthenticateWithCustomProvider(ctx context.Context, req *CustomAuthRequest) (*AuthResponse, error)
 }

@@ -24,6 +24,7 @@ type Service struct {
 	emailService    email.EmailService
 	smsService      sms.SMSService
 	securityMonitor *SecurityMonitor
+	customProviders *CustomAuthProviderManager
 }
 
 // NewService creates a new authentication service
@@ -39,6 +40,7 @@ func NewService(db *database.DB) *Service {
 		emailService:    nil, // Will be set via SetEmailService
 		smsService:      nil, // Will be set via SetSMSService
 		securityMonitor: NewSecurityMonitor(),
+		customProviders: NewCustomAuthProviderManager(),
 	}
 }
 
@@ -54,6 +56,7 @@ func NewServiceWithConfig(db *database.DB, jwtSecret string, accessExpiration, r
 		emailService:    nil, // Will be set via SetEmailService
 		smsService:      nil, // Will be set via SetSMSService
 		securityMonitor: NewSecurityMonitor(),
+		customProviders: NewCustomAuthProviderManager(),
 	}
 }
 
@@ -969,4 +972,84 @@ func (s *Service) Logout(ctx context.Context, accessToken, refreshToken string) 
 	}
 
 	return nil
+}
+
+// Custom Auth Provider Management Methods
+
+// RegisterCustomAuthProvider registers a new custom authentication provider
+func (s *Service) RegisterCustomAuthProvider(provider CustomAuthProvider) error {
+	return s.customProviders.RegisterProvider(provider)
+}
+
+// UnregisterCustomAuthProvider removes a custom authentication provider
+func (s *Service) UnregisterCustomAuthProvider(name string) error {
+	return s.customProviders.UnregisterProvider(name)
+}
+
+// GetCustomAuthProvider retrieves a provider by name
+func (s *Service) GetCustomAuthProvider(name string) (CustomAuthProvider, error) {
+	return s.customProviders.GetProvider(name)
+}
+
+// ListCustomAuthProviders returns all registered providers
+func (s *Service) ListCustomAuthProviders() map[string]CustomAuthProvider {
+	return s.customProviders.ListProviders()
+}
+
+// GetEnabledCustomAuthProviders returns only enabled providers
+func (s *Service) GetEnabledCustomAuthProviders() map[string]CustomAuthProvider {
+	return s.customProviders.GetEnabledProviders()
+}
+
+// GetCustomAuthProviderInfo returns information about a provider
+func (s *Service) GetCustomAuthProviderInfo(providerName string) (map[string]interface{}, error) {
+	return s.customProviders.GetProviderInfo(providerName)
+}
+
+// ValidateCustomAuthCredentials validates credentials for a specific provider
+func (s *Service) ValidateCustomAuthCredentials(providerName string, credentials map[string]interface{}) error {
+	return s.customProviders.ValidateCredentials(providerName, credentials)
+}
+
+// AuthenticateWithCustomProvider performs authentication using a custom provider
+func (s *Service) AuthenticateWithCustomProvider(ctx context.Context, req *CustomAuthRequest) (*AuthResponse, error) {
+	// Validate request
+	if err := s.validator.ValidateCustomAuthRequest(req); err != nil {
+		return nil, err
+	}
+
+	// Check rate limiting for the provider
+	providerKey := fmt.Sprintf("custom_auth_%s", req.Provider)
+	if err := s.securityMonitor.CheckOTPRequestRate(providerKey); err != nil {
+		return nil, err
+	}
+
+	// Check if provider is locked out
+	if s.securityMonitor.IsLocked(providerKey) {
+		return nil, fmt.Errorf("provider temporarily locked due to suspicious activity")
+	}
+
+	// Authenticate using the custom provider
+	user, err := s.customProviders.Authenticate(ctx, req.Provider, req.Credentials)
+	if err != nil {
+		// Record failed attempt for security monitoring
+		s.securityMonitor.RecordFailedAttempt(providerKey)
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
+
+	// Clear failed attempts on successful authentication
+	s.securityMonitor.ClearFailedAttempts(providerKey)
+
+	// Generate JWT tokens
+	tokenPair, err := s.jwtManager.GenerateTokenPair(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	return &AuthResponse{
+		User:         user,
+		AccessToken:  tokenPair.AccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		ExpiresIn:    int(tokenPair.ExpiresIn),
+	}, nil
 }
