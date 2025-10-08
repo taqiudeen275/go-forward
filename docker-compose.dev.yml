@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for development
+  postgres:
+    image: postgres:15-alpine
+    container_name: goforward-postgres-dev
+    environment:
+      POSTGRES_DB: goforward_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    networks:
+      - goforward-dev-network
+
+  # Redis for development
+  redis:
+    image: redis:7-alpine
+    container_name: goforward-redis-dev
+    ports:
+      - "6380:6379"
+    networks:
+      - goforward-dev-network
+
+  # Development database for testing
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: goforward-postgres-test
+    environment:
+      POSTGRES_DB: goforward_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    networks:
+      - goforward-dev-network
+    profiles:
+      - testing
+
+  # Adminer for database management
+  adminer:
+    image: adminer:latest
+    container_name: goforward-adminer
+    ports:
+      - "8081:8080"
+    networks:
+      - goforward-dev-network
+    profiles:
+      - tools
+
+  # Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: goforward-redis-commander
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8082:8081"
+    networks:
+      - goforward-dev-network
+    depends_on:
+      - redis
+    profiles:
+      - tools
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  postgres_test_data:
+    driver: local
+
+networks:
+  goforward-dev-network:
+    driver: bridge

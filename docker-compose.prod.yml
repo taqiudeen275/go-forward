@@ -1,0 +1,178 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for production
+  postgres:
+    image: postgres:15-alpine
+    container_name: goforward-postgres-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-goforward}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    networks:
+      - goforward-prod-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Redis for production
+  redis:
+    image: redis:7-alpine
+    container_name: goforward-redis-prod
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_prod_data:/data
+    networks:
+      - goforward-prod-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Go Forward Application for production
+  goforward:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goforward-app-prod
+    environment:
+      # Database configuration
+      GOFORWARD_DATABASE_HOST: postgres
+      GOFORWARD_DATABASE_PORT: 5432
+      GOFORWARD_DATABASE_NAME: ${POSTGRES_DB:-goforward}
+      GOFORWARD_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      GOFORWARD_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      GOFORWARD_DATABASE_SSL_MODE: require
+      
+      # Redis configuration
+      GOFORWARD_REALTIME_REDIS_HOST: redis
+      GOFORWARD_REALTIME_REDIS_PORT: 6379
+      GOFORWARD_REALTIME_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      
+      # Server configuration
+      GOFORWARD_SERVER_HOST: 0.0.0.0
+      GOFORWARD_SERVER_PORT: 8080
+      
+      # Auth configuration
+      GOFORWARD_AUTH_JWT_SECRET: ${JWT_SECRET}
+      
+      # SMTP configuration
+      GOFORWARD_AUTH_SMTP_HOST: ${SMTP_HOST}
+      GOFORWARD_AUTH_SMTP_PORT: ${SMTP_PORT:-587}
+      GOFORWARD_AUTH_SMTP_USERNAME: ${SMTP_USERNAME}
+      GOFORWARD_AUTH_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      GOFORWARD_AUTH_SMTP_FROM: ${SMTP_FROM}
+      
+      # SMS configuration
+      GOFORWARD_AUTH_SMS_PROVIDER: ${SMS_PROVIDER:-arkesel}
+      GOFORWARD_AUTH_SMS_ARKESEL_API_KEY: ${ARKESEL_API_KEY}
+      GOFORWARD_AUTH_SMS_ARKESEL_SENDER: ${ARKESEL_SENDER}
+      
+      # Storage configuration
+      GOFORWARD_STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      GOFORWARD_STORAGE_S3_REGION: ${S3_REGION}
+      GOFORWARD_STORAGE_S3_BUCKET: ${S3_BUCKET}
+      GOFORWARD_STORAGE_S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      GOFORWARD_STORAGE_S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      
+      # Logging configuration
+      GOFORWARD_LOGGING_LEVEL: ${LOG_LEVEL:-info}
+      GOFORWARD_LOGGING_FORMAT: json
+      GOFORWARD_LOGGING_OUTPUT: file
+      GOFORWARD_LOGGING_FILE_PATH: /app/logs/app.log
+    volumes:
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - ./plugins:/app/plugins
+      - ./config.prod.yaml:/app/config.yaml:ro
+    networks:
+      - goforward-prod-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Nginx reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    container_name: goforward-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    networks:
+      - goforward-prod-network
+    depends_on:
+      - goforward
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_prod_data:
+    driver: local
+  redis_prod_data:
+    driver: local
+
+networks:
+  goforward-prod-network:
+    driver: bridge

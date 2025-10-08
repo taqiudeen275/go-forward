@@ -1,0 +1,107 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: "30s"
+  write_timeout: "30s"
+  log_level: "info"
+  cors:
+    allowed_origins: ["https://yourdomain.com", "https://www.yourdomain.com"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_headers: ["Content-Type", "Authorization", "X-Requested-With"]
+    allow_credentials: true
+    max_age: 86400
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+    burst_size: 10
+    cleanup_interval: "1m"
+
+database:
+  host: "postgres"
+  port: 5432
+  name: "goforward"
+  user: "postgres"
+  password: "${POSTGRES_PASSWORD}"
+  ssl_mode: "require"
+  max_connections: 50
+  max_idle_connections: 10
+  max_lifetime: "1h"
+
+auth:
+  jwt_secret: "${JWT_SECRET}"
+  jwt_expiration: "24h"
+  refresh_expiration: "168h" # 7 days
+  otp_expiration: "10m"
+  password_min_length: 8
+  enable_email_auth: true
+  enable_phone_auth: true
+  enable_username_auth: true
+  require_verification: true
+  smtp:
+    host: "${SMTP_HOST}"
+    port: 587
+    username: "${SMTP_USERNAME}"
+    password: "${SMTP_PASSWORD}"
+    from: "${SMTP_FROM}"
+    use_tls: true
+  sms:
+    provider: "${SMS_PROVIDER}"
+    arkesel:
+      api_key: "${ARKESEL_API_KEY}"
+      sender: "${ARKESEL_SENDER}"
+
+storage:
+  provider: "${STORAGE_PROVIDER}"
+  local_path: "./storage"
+  max_file_size: 52428800 # 50MB
+  s3:
+    region: "${S3_REGION}"
+    bucket: "${S3_BUCKET}"
+    access_key_id: "${S3_ACCESS_KEY_ID}"
+    secret_access_key: "${S3_SECRET_ACCESS_KEY}"
+    endpoint: ""
+    use_ssl: true
+
+realtime:
+  enabled: true
+  max_connections: 2000
+  heartbeat_interval: "30s"
+  read_buffer_size: 1024
+  write_buffer_size: 1024
+  redis:
+    host: "redis"
+    port: 6379
+    password: "${REDIS_PASSWORD}"
+    db: 0
+
+dashboard:
+  enabled: true
+  path: "/admin"
+  static_dir: "./dashboard/dist"
+
+logging:
+  level: "${LOG_LEVEL}"
+  format: "json"
+  output: "file"
+  file_path: "./logs/app.log"
+  max_size: 100 # MB
+  max_backups: 5
+  max_age: 30 # days
+
+plugins:
+  enabled: true
+  directory: "./plugins"
+  plugins:
+    example-http:
+      enabled: false
+      priority: 10
+      config:
+        enable_logging: true
+        enable_cors: true
+      dependencies: []
+    example-auth:
+      enabled: false
+      priority: 5
+      config:
+        custom_setting: "production_value"
+      dependencies: []
