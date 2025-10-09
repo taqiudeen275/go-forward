@@ -238,12 +238,12 @@ CREATE TRIGGER update_security_events_updated_at
 
 -- Create function to automatically update last_activity on admin_sessions
 CREATE OR REPLACE FUNCTION update_admin_session_activity()
-RETURNS TRIGGER AS $
+RETURNS TRIGGER AS $$
 BEGIN
     NEW.last_activity = NOW();
     RETURN NEW;
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';
 
 -- Create trigger to update last_activity on admin_sessions updates
 CREATE TRIGGER update_admin_sessions_activity 
@@ -253,7 +253,7 @@ CREATE TRIGGER update_admin_sessions_activity
 
 -- Create function to clean up expired sessions
 CREATE OR REPLACE FUNCTION cleanup_expired_admin_sessions()
-RETURNS INTEGER AS $
+RETURNS INTEGER AS $$
 DECLARE
     expired_count INTEGER;
 BEGIN
@@ -269,7 +269,7 @@ BEGIN
     GET DIAGNOSTICS expired_count = ROW_COUNT;
     RETURN expired_count;
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';
 
 -- Create function to log admin actions automatically
 CREATE OR REPLACE FUNCTION log_admin_action(
@@ -288,7 +288,7 @@ CREATE OR REPLACE FUNCTION log_admin_action(
     p_error_message TEXT DEFAULT NULL,
     p_execution_time_ms INTEGER DEFAULT NULL
 )
-RETURNS UUID AS $
+RETURNS UUID AS $$
 DECLARE
     log_id UUID;
 BEGIN
@@ -304,7 +304,7 @@ BEGIN
     
     RETURN log_id;
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';
 
 -- Create function to log security events
 CREATE OR REPLACE FUNCTION log_security_event(
@@ -326,7 +326,7 @@ CREATE OR REPLACE FUNCTION log_security_event(
     p_detection_method VARCHAR(50) DEFAULT NULL,
     p_confidence_score DECIMAL(3,2) DEFAULT NULL
 )
-RETURNS UUID AS $
+RETURNS UUID AS $$
 DECLARE
     event_id UUID;
 BEGIN
@@ -344,4 +344,4 @@ BEGIN
     
     RETURN event_id;
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';

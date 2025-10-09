@@ -15,7 +15,7 @@ ALTER TABLE admin_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Create function to get current user's admin level
 CREATE OR REPLACE FUNCTION get_current_user_admin_level()
-RETURNS INTEGER AS $
+RETURNS INTEGER AS $$
 DECLARE
     user_level INTEGER;
 BEGIN
@@ -29,11 +29,11 @@ BEGIN
     
     RETURN COALESCE(user_level, 999); -- Return high number if no admin role
 END;
-$ language 'plpgsql' SECURITY DEFINER;
+$$ language 'plpgsql' SECURITY DEFINER;
 
 -- Create function to check if current user has specific capability
 CREATE OR REPLACE FUNCTION current_user_has_capability(capability_name TEXT)
-RETURNS BOOLEAN AS $
+RETURNS BOOLEAN AS $$
 DECLARE
     has_capability BOOLEAN := FALSE;
 BEGIN
@@ -51,11 +51,11 @@ BEGIN
     
     RETURN has_capability;
 END;
-$ language 'plpgsql' SECURITY DEFINER;
+$$ language 'plpgsql' SECURITY DEFINER;
 
 -- Create function to check if current user can access specific table
 CREATE OR REPLACE FUNCTION current_user_can_access_table(table_name TEXT)
-RETURNS BOOLEAN AS $
+RETURNS BOOLEAN AS $$
 DECLARE
     can_access BOOLEAN := FALSE;
     user_level INTEGER;
@@ -93,7 +93,7 @@ BEGIN
     
     RETURN FALSE;
 END;
-$ language 'plpgsql' SECURITY DEFINER;
+$$ language 'plpgsql' SECURITY DEFINER;
 
 -- RLS Policies for users table
 -- System and Super Admins can see all users
@@ -357,19 +357,19 @@ CREATE POLICY admin_sessions_self_access ON admin_sessions
 
 -- Create function to set user context for RLS
 CREATE OR REPLACE FUNCTION set_user_context(user_id UUID)
-RETURNS VOID AS $
+RETURNS VOID AS $$
 BEGIN
     PERFORM set_config('app.current_user_id', user_id::TEXT, true);
 END;
-$ language 'plpgsql' SECURITY DEFINER;
+$$ language 'plpgsql' SECURITY DEFINER;
 
 -- Create function to clear user context
 CREATE OR REPLACE FUNCTION clear_user_context()
-RETURNS VOID AS $
+RETURNS VOID AS $$
 BEGIN
     PERFORM set_config('app.current_user_id', '', true);
 END;
-$ language 'plpgsql' SECURITY DEFINER;
+$$ language 'plpgsql' SECURITY DEFINER;
 
 -- Create function to test RLS policies with different user contexts
 CREATE OR REPLACE FUNCTION test_rls_policies()
@@ -380,7 +380,7 @@ RETURNS TABLE(
     operation TEXT,
     result TEXT,
     row_count BIGINT
-) AS $
+) AS $$
 DECLARE
     test_user_id UUID;
     system_admin_id UUID;
@@ -480,4 +480,4 @@ BEGIN
     
     RETURN;
 END;
-$ language 'plpgsql' SECURITY DEFINER;
+$$ language 'plpgsql' SECURITY DEFINER;

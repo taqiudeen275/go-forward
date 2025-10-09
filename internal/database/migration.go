@@ -832,12 +832,43 @@ func (ms *MigrationService) GetMigrationStatus(ctx context.Context) ([]*Migratio
 		return nil, fmt.Errorf("failed to get migration files: %w", err)
 	}
 
-	// Get applied migrations
-	appliedQuery := `SELECT version FROM schema_migrations`
+	// Get current version to determine which migrations are applied
+	currentVersion, _, err := ms.GetCurrentVersion()
+	if err != nil {
+		// If we can't get current version, try to query schema_migrations directly
+		appliedVersions, queryErr := ms.getAppliedVersionsFromDB(ctx)
+		if queryErr != nil {
+			// If both methods fail, assume all migrations are pending
+			return migrations, nil
+		}
+
+		// Update migration status based on applied versions
+		for _, migration := range migrations {
+			migration.Applied = appliedVersions[migration.Version]
+		}
+		return migrations, nil
+	}
+
+	// Update migration status based on current version
+	// All migrations with version <= currentVersion are considered applied
+	for _, migration := range migrations {
+		migration.Applied = migration.Version <= currentVersion
+		if migration.Applied {
+			// Try to get applied timestamp from schema_migrations
+			appliedAt, _ := ms.getMigrationAppliedTime(ctx, migration.Version)
+			migration.AppliedAt = appliedAt
+		}
+	}
+
+	return migrations, nil
+}
+
+// getAppliedVersionsFromDB queries the schema_migrations table directly
+func (ms *MigrationService) getAppliedVersionsFromDB(ctx context.Context) (map[uint]bool, error) {
+	appliedQuery := `SELECT version FROM schema_migrations ORDER BY version`
 	rows, err := ms.db.Query(ctx, appliedQuery)
 	if err != nil {
-		// If schema_migrations doesn't exist, all migrations are pending
-		return migrations, nil
+		return nil, fmt.Errorf("failed to query schema_migrations: %w", err)
 	}
 	defer rows.Close()
 
@@ -850,12 +881,21 @@ func (ms *MigrationService) GetMigrationStatus(ctx context.Context) ([]*Migratio
 		appliedVersions[version] = true
 	}
 
-	// Update migration status
-	for _, migration := range migrations {
-		migration.Applied = appliedVersions[migration.Version]
+	return appliedVersions, nil
+}
+
+// getMigrationAppliedTime gets the applied timestamp for a migration
+func (ms *MigrationService) getMigrationAppliedTime(ctx context.Context, version uint) (*time.Time, error) {
+	// First try to get from migrations_metadata table
+	metadataQuery := `SELECT applied_at FROM migrations_metadata WHERE version = $1 AND applied_at IS NOT NULL`
+	var appliedAt time.Time
+	err := ms.db.QueryRow(ctx, metadataQuery, fmt.Sprintf("%d", version)).Scan(&appliedAt)
+	if err == nil {
+		return &appliedAt, nil
 	}
 
-	return migrations, nil
+	// If not found in metadata, return nil (we don't have timestamp info from schema_migrations)
+	return nil, nil
 }
 
 // GetCurrentVersion returns the current migration version

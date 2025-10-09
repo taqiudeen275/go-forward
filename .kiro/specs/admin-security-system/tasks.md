@@ -31,7 +31,7 @@
 
 
 
-- [ ] 1.3 Set up Row Level Security policies
+- [x] 1.3 Set up Row Level Security policies
   - Enable RLS on sensitive tables (users, files, configurations)
   - Create policies for admin hierarchy access control
   - Implement ownership-based access policies
