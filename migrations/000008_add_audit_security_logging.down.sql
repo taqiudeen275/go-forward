@@ -1,14 +1,14 @@
 -- Rollback Audit and Security Logging Schema Migration
 
--- Drop functions
+-- Drop triggers first (they depend on functions)
+DROP TRIGGER IF EXISTS update_admin_sessions_activity ON admin_sessions;
+DROP TRIGGER IF EXISTS update_security_events_updated_at ON security_events;
+
+-- Drop functions after triggers
 DROP FUNCTION IF EXISTS log_security_event(VARCHAR(50), VARCHAR(20), VARCHAR(50), VARCHAR(255), TEXT, UUID, UUID, VARCHAR(255), UUID, VARCHAR(100), JSONB, INET, TEXT, VARCHAR(255), VARCHAR(255), VARCHAR(50), DECIMAL(3,2));
 DROP FUNCTION IF EXISTS log_admin_action(UUID, UUID, VARCHAR(100), VARCHAR(255), UUID, JSONB, INET, TEXT, VARCHAR(255), VARCHAR(255), VARCHAR(20), VARCHAR(50), TEXT, INTEGER);
 DROP FUNCTION IF EXISTS cleanup_expired_admin_sessions();
 DROP FUNCTION IF EXISTS update_admin_session_activity();
-
--- Drop triggers
-DROP TRIGGER IF EXISTS update_admin_sessions_activity ON admin_sessions;
-DROP TRIGGER IF EXISTS update_security_events_updated_at ON security_events;
 
 -- Drop indexes for admin_sessions
 DROP INDEX IF EXISTS idx_admin_sessions_active_expires;
