@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // createEnvironmentCommands creates environment management commands
@@ -310,12 +313,25 @@ func applyPoliciesCmd() *cobra.Command {
 				}
 				fmt.Printf("\nThis may affect system behavior and security settings.\n\n")
 
+				// Check if we're in an interactive terminal
+				if !term.IsTerminal(int(os.Stdin.Fd())) {
+					return fmt.Errorf("operation cancelled - running in non-interactive mode (use --force to bypass confirmation)")
+				}
+
 				fmt.Print("Type 'APPLY POLICIES' to confirm: ")
+
+				// Use bufio.Scanner for better input handling
+				scanner := bufio.NewScanner(os.Stdin)
+
 				var confirmation string
-				fmt.Scanln(&confirmation)
+				if scanner.Scan() {
+					confirmation = strings.TrimSpace(scanner.Text())
+				} else {
+					return fmt.Errorf("operation cancelled - failed to read input")
+				}
 
 				if confirmation != "APPLY POLICIES" {
-					return fmt.Errorf("operation cancelled")
+					return fmt.Errorf("operation cancelled - incorrect confirmation (expected 'APPLY POLICIES', got '%s')", confirmation)
 				}
 			}
 
