@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Go Forward is a comprehensive backend framework designed as an internal tool for personal projects, built with Go and featuring a Next.js admin dashboard. The framework provides authentication, database management with real-time capabilities, API services, admin dashboard, and storage solutions. It follows Supabase's architecture patterns while maintaining the flexibility of PocketBase for custom authentication models.
+Go Forward is a comprehensive backend framework designed as an internal tool for personal projects, built with Go and featuring a SvelteKit admin dashboard. The framework provides authentication, database management with real-time capabilities, API services, admin dashboard, and storage solutions. It follows Supabase's architecture patterns while maintaining the flexibility of PocketBase for custom authentication models. The admin dashboard is embedded in the final build for seamless deployment.
 
 ## Requirements
 
@@ -60,7 +60,7 @@ Go Forward is a comprehensive backend framework designed as an internal tool for
 
 ### Requirement 5: Admin Dashboard Interface
 
-**User Story:** As a developer, I want a comprehensive admin dashboard built with Next.js, so that I can manage my backend services through a modern web interface.
+**User Story:** As a developer, I want a comprehensive admin dashboard built with SvelteKit that's embedded in the final build, so that I can manage my backend services through a modern, mobile-responsive web interface with appealing design.
 
 #### Acceptance Criteria
 
@@ -70,6 +70,10 @@ Go Forward is a comprehensive backend framework designed as an internal tool for
 4. WHEN managing users THEN the system SHALL provide user administration tools
 5. WHEN configuring settings THEN the system SHALL provide framework configuration options
 6. WHEN monitoring activity THEN the system SHALL display system logs and metrics
+7. WHEN using the dashboard on mobile devices THEN the system SHALL provide a fully responsive interface
+8. WHEN switching themes THEN the system SHALL support light and dark mode themes
+9. WHEN viewing the dashboard THEN the system SHALL provide an appealing design inspired by PocketBase and Supabase dashboards
+10. WHEN the framework is built THEN the system SHALL embed the dashboard in the final binary for seamless deployment
 
 ### Requirement 6: File Storage System
 
@@ -97,7 +101,21 @@ Go Forward is a comprehensive backend framework designed as an internal tool for
 5. WHEN migration conflicts occur THEN the system SHALL provide clear error messages
 6. IF migration fails THEN the system SHALL maintain database integrity
 
-### Requirement 8: Framework Configuration and Extensibility
+### Requirement 8: HTTP-Only Cookie Authentication Support
+
+**User Story:** As a developer, I want configurable HTTP-only cookie authentication support, so that I can use secure cookie-based authentication for admin dashboard and other web applications that require enhanced security.
+
+#### Acceptance Criteria
+
+1. WHEN HTTP-only cookie mode is enabled THEN the system SHALL store JWT tokens in secure HTTP-only cookies
+2. WHEN authentication is successful THEN the system SHALL set secure, HTTP-only cookies with proper SameSite attributes
+3. WHEN requests are made with cookie authentication THEN the system SHALL validate tokens from cookies
+4. WHEN logout is requested THEN the system SHALL clear authentication cookies properly
+5. WHEN cookie authentication is configured THEN the system SHALL support both cookie and bearer token authentication simultaneously
+6. WHEN CSRF protection is enabled THEN the system SHALL implement CSRF token validation for cookie-based requests
+7. IF cookie authentication is disabled THEN the system SHALL fall back to bearer token authentication only
+
+### Requirement 9: Framework Configuration and Extensibility
 
 **User Story:** As a developer, I want a configurable and extensible framework, so that I can customize it for different project requirements while maintaining it as an open-source tool.
 

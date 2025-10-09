@@ -426,83 +426,108 @@
     - Test plugin registration and management
     - _Requirements: 8.1, 8.2, 8.3_
 
-- [x] 13. Create Next.js admin dashboard foundation
+- [ ] 13. Implement HTTP-only cookie authentication support
 
+  - [ ] 13.1 Add cookie-based authentication methods
 
+    - Extend AuthService to support HTTP-only cookie authentication
+    - Implement secure cookie generation with proper attributes (HttpOnly, Secure, SameSite)
+    - Add cookie validation and token extraction from cookies
+    - _Requirements: 8.1, 8.2, 8.3_
 
+  - [ ] 13.2 Implement CSRF protection for cookie authentication
+    - Create CSRF token generation and validation
+    - Add CSRF middleware for cookie-based requests
+    - Implement CSRF token refresh mechanism
+    - _Requirements: 8.6_
 
+  - [ ] 13.3 Add configuration support for cookie authentication
+    - Extend configuration system to support cookie authentication settings
+    - Add cookie domain, secure, and SameSite configuration options
+    - Implement dual authentication mode (cookies + bearer tokens)
+    - _Requirements: 8.5, 8.7_
 
-  - [x] 13.1 Set up Next.js project structure
+  - [ ]* 13.4 Write HTTP-only cookie authentication unit tests
+    - Test cookie generation and validation
+    - Test CSRF protection functionality
+    - Test dual authentication mode support
+    - _Requirements: 8.1, 8.2, 8.3, 8.6_
 
+- [ ] 14. Create SvelteKit admin dashboard foundation
 
-    - Initialize Next.js project with TypeScript
-    - Set up Tailwind CSS for styling
-    - Configure authentication state management
-    - _Requirements: 5.1, 5.6_
+  - [ ] 14.1 Set up SvelteKit project structure with embedded build
 
+    - Initialize SvelteKit project with TypeScript and static adapter
+    - Set up Tailwind CSS for styling with mobile-first approach
+    - Configure build process to generate static assets for Go embedding
+    - Create Go service to serve embedded dashboard assets
+    - _Requirements: 5.1, 5.7, 5.10_
 
+  - [ ] 14.2 Implement responsive design system with theme switching
+    - Create responsive design system inspired by PocketBase and Supabase
+    - Implement light and dark theme support with smooth transitions
+    - Add mobile-responsive navigation and layout components
+    - Create appealing UI components with modern design patterns
+    - _Requirements: 5.7, 5.8, 5.9_
 
-  - [ ] 13.2 Implement authentication pages
-    - Create login page with email/username/phone support
-    - Add OTP verification pages for email and SMS
-    - Implement password reset functionality
+  - [ ] 14.3 Build authentication pages with cookie support
+    - Create login page with email/username/phone support and cookie authentication
+    - Add OTP verification pages for email and SMS with CSRF protection
+    - Implement password reset functionality with secure cookie handling
+    - Add authentication state management for cookie-based auth
+    - _Requirements: 5.1, 8.1, 8.6_
 
+  - [ ]* 14.4 Write dashboard foundation unit tests
+    - Test responsive design components across different screen sizes
+    - Test theme switching functionality
+    - Test authentication form components with cookie support
+    - _Requirements: 5.1, 5.7, 5.8, 5.9_
 
-    - _Requirements: 5.1_
+- [ ] 15. Complete admin dashboard features with mobile responsiveness
+  - [ ] 15.1 Add responsive data management interface
+    - Create mobile-responsive data grid for viewing table contents
+    - Implement touch-friendly data editing with proper validation
+    - Add responsive data filtering and search functionality with mobile-optimized UI
+    - _Requirements: 5.4, 5.7_
 
-  - [ ] 13.3 Build database management interface
-    - Create table listing and creation pages
-    - Implement visual table editor with column management
-    - Add SQL editor with syntax highlighting
-    - _Requirements: 5.2, 5.3_
+  - [ ] 15.2 Implement responsive database management interface
+    - Create mobile-responsive table listing and creation pages
+    - Implement touch-friendly visual table editor with column management
+    - Add responsive SQL editor with syntax highlighting and mobile keyboard support
+    - _Requirements: 5.2, 5.3, 5.7_
 
-  - [ ]* 13.4 Write dashboard component unit tests
-    - Test authentication form components
-    - Test table management interface components
-    - Test SQL editor functionality
-    - _Requirements: 5.1, 5.2, 5.3_
+  - [ ] 15.3 Build responsive user management and system monitoring
+    - Create responsive user listing and management pages
+    - Add mobile-friendly user role and permission management
+    - Implement responsive system metrics dashboard with touch-friendly charts
+    - Add responsive log viewing and filtering interface
+    - _Requirements: 5.5, 5.6, 5.7_
 
-- [ ] 14. Complete admin dashboard features
-  - [ ] 14.1 Add data management interface
-    - Create data grid for viewing table contents
-    - Implement data editing with proper validation
-    - Add data filtering and search functionality
-    - _Requirements: 5.4_
+  - [ ]* 15.4 Write responsive dashboard feature unit tests
+    - Test responsive data management interface components
+    - Test mobile-friendly user management functionality
+    - Test responsive monitoring and logging features
+    - _Requirements: 5.4, 5.5, 5.6, 5.7_
 
-  - [ ] 14.2 Implement user management
-    - Create user listing and management pages
-    - Add user role and permission management
-    - Implement user activity monitoring
-    - _Requirements: 5.5_
-
-  - [ ] 14.3 Add system monitoring and logs
-    - Create system metrics dashboard
-    - Implement log viewing and filtering
-    - Add real-time system status monitoring
-    - _Requirements: 5.6_
-
-  - [ ]* 14.4 Write dashboard feature unit tests
-    - Test data management interface components
-    - Test user management functionality
-    - Test monitoring and logging features
-    - _Requirements: 5.4, 5.5, 5.6_
-
-- [ ] 15. Final integration and testing
-  - [ ] 15.1 Complete end-to-end integration
-    - Connect all services through the API gateway
-    - Implement proper error handling across all components
-    - Add comprehensive logging and monitoring
+- [ ] 16. Final integration and testing
+  - [ ] 16.1 Complete end-to-end integration with embedded dashboard
+    - Connect all services through the API gateway including embedded SvelteKit dashboard
+    - Implement proper error handling across all components including dashboard
+    - Add comprehensive logging and monitoring with dashboard integration
+    - Test HTTP-only cookie authentication with dashboard
     - _Requirements: All requirements_
 
-  - [ ] 15.2 Create example applications and documentation
-    - Build example client applications using the framework
-    - Create comprehensive API documentation
-    - Add deployment guides and best practices
-    - _Requirements: 8.5, 8.6_
+  - [ ] 16.2 Create example applications and comprehensive documentation
+    - Build example client applications using the framework with both cookie and bearer token auth
+    - Create comprehensive API documentation including cookie authentication
+    - Add deployment guides and best practices for embedded dashboard
+    - Document mobile-responsive dashboard features and theme customization
+    - _Requirements: 9.5, 9.6, 5.9, 5.10_
 
-  - [ ]* 15.3 Write comprehensive integration tests
-    - Test complete user authentication flows
-    - Test database operations through API endpoints
-    - Test real-time functionality end-to-end
-    - Test file storage operations
+  - [ ]* 16.3 Write comprehensive integration tests
+    - Test complete user authentication flows with both cookie and bearer token methods
+    - Test database operations through API endpoints with proper authorization
+    - Test real-time functionality end-to-end with dashboard integration
+    - Test file storage operations with mobile-responsive interface
+    - Test responsive dashboard functionality across different screen sizes
     - _Requirements: All requirements_

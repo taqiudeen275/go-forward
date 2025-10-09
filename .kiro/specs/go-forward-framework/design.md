@@ -2,7 +2,7 @@
 
 ## Overview
 
-Go Forward is a comprehensive backend framework built in Go that provides authentication, database management with real-time capabilities, auto-generated APIs, file storage, and an admin dashboard. The framework follows Supabase's architectural patterns while being designed as a self-contained, open-source solution for personal and internal projects.
+Go Forward is a comprehensive backend framework built in Go that provides authentication, database management with real-time capabilities, auto-generated APIs, file storage, and an embedded SvelteKit admin dashboard. The framework follows Supabase's architectural patterns while being designed as a self-contained, open-source solution for personal and internal projects. The admin dashboard is embedded directly into the Go binary for seamless deployment.
 
 The system is designed around a microservices architecture where each component can work independently but integrates seamlessly with others. The core principle is to provide a batteries-included backend solution that requires minimal configuration while remaining highly extensible.
 
@@ -13,7 +13,7 @@ The system is designed around a microservices architecture where each component 
 ```mermaid
 graph TB
     Client[Client Applications] --> Gateway[API Gateway]
-    Dashboard[Next.js Admin Dashboard] --> Gateway
+    Gateway --> EmbeddedDashboard[Embedded SvelteKit Dashboard]
     
     Gateway --> Auth[Auth Service]
     Gateway --> API[REST API Service]
@@ -27,7 +27,9 @@ graph TB
     Storage --> FS[File System]
     Meta --> DB
     
-    subgraph "Core Services"
+    subgraph "Go Binary"
+        Gateway
+        EmbeddedDashboard
         Auth
         API
         Realtime
@@ -90,19 +92,26 @@ type Middleware interface {
 **Responsibilities**:
 - User registration and login
 - OTP generation and validation (email/SMS)
-- JWT token management
+- JWT token management (bearer tokens and HTTP-only cookies)
 - Custom auth model support
 - Password hashing and validation
+- HTTP-only cookie authentication with CSRF protection
 
 **Key Interfaces**:
 ```go
 type AuthService interface {
     Register(req RegisterRequest) (*User, error)
     Login(req LoginRequest) (*AuthResponse, error)
+    LoginWithCookies(req LoginRequest) (*AuthResponse, *http.Cookie, *http.Cookie, error)
     SendOTP(req OTPRequest) error
     VerifyOTP(req VerifyOTPRequest) (*AuthResponse, error)
     ValidateToken(token string) (*Claims, error)
+    ValidateTokenFromCookie(cookie *http.Cookie) (*Claims, error)
     RefreshToken(refreshToken string) (*AuthResponse, error)
+    RefreshTokenFromCookie(cookie *http.Cookie) (*AuthResponse, *http.Cookie, *http.Cookie, error)
+    Logout() (*http.Cookie, *http.Cookie, error)
+    GenerateCSRFToken(userID string) (string, error)
+    ValidateCSRFToken(token string, userID string) error
 }
 
 type CustomAuthProvider interface {
@@ -193,7 +202,33 @@ type AccessControl interface {
 }
 ```
 
-### 6. Database Meta Service
+### 6. Embedded Dashboard Service
+
+**Technology**: SvelteKit compiled to static assets, embedded in Go binary
+**Responsibilities**:
+- Serve embedded SvelteKit dashboard from Go binary
+- Handle dashboard routing and static asset serving
+- Provide mobile-responsive interface with theme switching
+- Integrate with backend APIs for data management
+- Implement appealing UI design inspired by PocketBase and Supabase
+
+**Key Interfaces**:
+```go
+type DashboardService interface {
+    ServeStaticAssets(path string) http.Handler
+    HandleSPARouting() http.Handler
+    GetDashboardConfig() (*DashboardConfig, error)
+}
+
+type DashboardConfig struct {
+    Theme           string            `json:"theme"`
+    BrandingConfig  BrandingConfig    `json:"branding"`
+    FeatureFlags    map[string]bool   `json:"feature_flags"`
+    APIEndpoints    map[string]string `json:"api_endpoints"`
+}
+```
+
+### 7. Database Meta Service
 
 **Technology**: Go with database/sql and PostgreSQL driver
 **Responsibilities**:
@@ -243,9 +278,10 @@ type User struct {
 // AuthResponse represents authentication response
 type AuthResponse struct {
     User         *User  `json:"user"`
-    AccessToken  string `json:"access_token"`
-    RefreshToken string `json:"refresh_token"`
+    AccessToken  string `json:"access_token,omitempty"`  // Omitted when using HTTP-only cookies
+    RefreshToken string `json:"refresh_token,omitempty"` // Omitted when using HTTP-only cookies
     ExpiresIn    int    `json:"expires_in"`
+    CSRFToken    string `json:"csrf_token,omitempty"`    // Included when using HTTP-only cookies
 }
 
 // Table represents database table metadata
@@ -304,6 +340,38 @@ type Config struct {
     Storage   StorageConfig   `yaml:"storage"`
     Realtime  RealtimeConfig  `yaml:"realtime"`
     Dashboard DashboardConfig `yaml:"dashboard"`
+}
+
+// AuthConfig represents authentication configuration
+type AuthConfig struct {
+    JWTSecret           string        `yaml:"jwt_secret"`
+    AccessTokenExpiry   time.Duration `yaml:"access_token_expiry"`
+    RefreshTokenExpiry  time.Duration `yaml:"refresh_token_expiry"`
+    UseHTTPOnlyCookies  bool          `yaml:"use_http_only_cookies"`
+    CookieDomain        string        `yaml:"cookie_domain"`
+    CookieSecure        bool          `yaml:"cookie_secure"`
+    CookieSameSite      string        `yaml:"cookie_same_site"`
+    EnableCSRFProtection bool         `yaml:"enable_csrf_protection"`
+    CSRFTokenExpiry     time.Duration `yaml:"csrf_token_expiry"`
+}
+
+// DashboardConfig represents dashboard configuration
+type DashboardConfig struct {
+    Enabled         bool              `yaml:"enabled"`
+    Path            string            `yaml:"path"`
+    DefaultTheme    string            `yaml:"default_theme"`
+    AllowThemeSwitch bool             `yaml:"allow_theme_switch"`
+    Branding        BrandingConfig    `yaml:"branding"`
+    MobileBreakpoint string           `yaml:"mobile_breakpoint"`
+}
+
+// BrandingConfig represents dashboard branding configuration
+type BrandingConfig struct {
+    AppName     string `yaml:"app_name"`
+    LogoURL     string `yaml:"logo_url"`
+    FaviconURL  string `yaml:"favicon_url"`
+    PrimaryColor string `yaml:"primary_color"`
+    AccentColor  string `yaml:"accent_color"`
 }
 
 // ServerConfig represents server configuration
