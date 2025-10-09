@@ -78,7 +78,7 @@
 
 
 
-- [ ] 2.2 Build RBAC engine with role hierarchy
+- [x] 2.2 Build RBAC engine with role hierarchy
 
 
   - Implement RBACEngine interface with role management
@@ -91,7 +91,7 @@
 
 
 
-- [ ] 2.3 Create policy engine for dynamic permissions
+- [x] 2.3 Create policy engine for dynamic permissions
 
   - Implement PolicyEngine interface for rule evaluation
   - Build SQL policy generation for RLS integration
