@@ -139,13 +139,23 @@ func (r *AdminRepository) GetUserAdminLevel(ctx context.Context, userID string) 
 
 // AssignAdminRole assigns an admin role to a user
 func (r *AdminRepository) AssignAdminRole(ctx context.Context, userID, roleID, grantedBy string) error {
-	query := `
-		INSERT INTO user_admin_roles (user_id, role_id, granted_by, granted_at, is_active)
-		VALUES ($1, $2, $3, NOW(), true)
-		ON CONFLICT (user_id, role_id, is_active) DO NOTHING
-	`
+	var query string
+	var err error
 
-	err := r.db.Exec(ctx, query, userID, roleID, grantedBy)
+	// Handle system operations (CLI, bootstrap, etc.) by setting granted_by to NULL
+	if grantedBy == "CLI" || grantedBy == "SYSTEM" || grantedBy == "BOOTSTRAP" {
+		query = `
+			INSERT INTO user_admin_roles (user_id, role_id, granted_by, granted_at, is_active)
+			VALUES ($1, $2, NULL, NOW(), true)
+		`
+		err = r.db.Exec(ctx, query, userID, roleID)
+	} else {
+		query = `
+			INSERT INTO user_admin_roles (user_id, role_id, granted_by, granted_at, is_active)
+			VALUES ($1, $2, $3, NOW(), true)
+		`
+		err = r.db.Exec(ctx, query, userID, roleID, grantedBy)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to assign admin role: %w", err)
 	}

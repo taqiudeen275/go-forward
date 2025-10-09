@@ -15,7 +15,7 @@ type AdminRole struct {
 	Name         string            `json:"name" db:"name"`
 	Level        AdminLevel        `json:"level" db:"level"`
 	Capabilities AdminCapabilities `json:"capabilities" db:"capabilities"`
-	CreatedBy    string            `json:"created_by" db:"created_by"`
+	CreatedBy    *string           `json:"created_by" db:"created_by"`
 	CreatedAt    time.Time         `json:"created_at" db:"created_at"`
 	IsSystemRole bool              `json:"is_system_role" db:"is_system_role"`
 	Description  string            `json:"description" db:"description"`

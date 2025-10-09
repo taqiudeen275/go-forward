@@ -173,7 +173,7 @@ func (am *AdminManager) CreateSystemAdmin(ctx context.Context, req *CreateSystem
 	}
 
 	// Get system admin role ID
-	systemAdminRole, err := am.adminRepo.GetAdminRoleByName(ctx, "system_admin")
+	systemAdminRole, err := am.adminRepo.GetAdminRoleByName(ctx, "System Admin")
 	if err != nil {
 		// Rollback user creation
 		am.userRepo.Delete(ctx, userID)
@@ -224,7 +224,7 @@ func (am *AdminManager) PromoteAdmin(ctx context.Context, req *PromoteAdminReque
 	}
 
 	// Get role ID for the target level
-	roleName := string(req.ToLevel)
+	roleName := am.adminLevelToRoleName(req.ToLevel)
 	targetRole, err := am.adminRepo.GetAdminRoleByName(ctx, roleName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get target admin role: %w", err)
@@ -312,7 +312,7 @@ func (am *AdminManager) DemoteAdmin(ctx context.Context, req *DemoteAdminRequest
 		}
 
 		// Get new role ID
-		newRoleName := string(*req.ToLevel)
+		newRoleName := am.adminLevelToRoleName(*req.ToLevel)
 		newRole, err := am.adminRepo.GetAdminRoleByName(ctx, newRoleName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get new admin role: %w", err)
@@ -457,4 +457,20 @@ type AdminListItem struct {
 	IsActive     bool            `json:"is_active"`
 	CreatedAt    time.Time       `json:"created_at"`
 	LastActiveAt *time.Time      `json:"last_active_at"`
+}
+
+// adminLevelToRoleName converts AdminLevel to the actual role name in the database
+func (am *AdminManager) adminLevelToRoleName(level auth.AdminLevel) string {
+	switch level {
+	case auth.SystemAdmin:
+		return "System Admin"
+	case auth.SuperAdmin:
+		return "Super Admin"
+	case auth.RegularAdmin:
+		return "Regular Admin"
+	case auth.Moderator:
+		return "Moderator"
+	default:
+		return "Moderator"
+	}
 }
