@@ -15,13 +15,15 @@ import (
 // MFAServiceImpl implements the MFAService interface
 type MFAServiceImpl struct {
 	userRepo UserRepositoryInterface
+	mfaRepo  *MFARepository
 	hasher   *PasswordHasher
 }
 
 // NewMFAService creates a new MFA service
-func NewMFAService(userRepo UserRepositoryInterface) MFAService {
+func NewMFAService(userRepo UserRepositoryInterface, mfaRepo *MFARepository) MFAService {
 	return &MFAServiceImpl{
 		userRepo: userRepo,
+		mfaRepo:  mfaRepo,
 		hasher:   NewPasswordHasher(),
 	}
 }
@@ -170,16 +172,12 @@ func (mfa *MFAServiceImpl) ValidateBackupCode(userID string, code string) error 
 
 // GetMFAConfiguration retrieves MFA configuration for a user
 func (mfa *MFAServiceImpl) GetMFAConfiguration(ctx context.Context, userID string) (*MFAConfiguration, error) {
-	// TODO: Implement actual database lookup
-	// For now, return a placeholder that indicates MFA is not configured
-	return nil, fmt.Errorf("MFA configuration not found")
+	return mfa.mfaRepo.GetMFAConfiguration(ctx, userID)
 }
 
 // UpdateMFAConfiguration updates MFA configuration for a user
 func (mfa *MFAServiceImpl) UpdateMFAConfiguration(ctx context.Context, config *MFAConfiguration) error {
-	// TODO: Implement actual database update
-	// This would save/update the MFA configuration in the database
-	return fmt.Errorf("MFA configuration update not implemented")
+	return mfa.mfaRepo.UpdateMFAConfiguration(ctx, config)
 }
 
 // Helper functions for MFA management

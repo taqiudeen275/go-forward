@@ -172,14 +172,18 @@ type PolicyEngineImpl struct {
 	policies    map[string]*SecurityPolicy
 	rlsPolicies map[string]*RLSPolicy
 	rbacEngine  RBACEngine
+	adminRepo   *AdminRepository
+	policyRepo  *PolicyRepository
 }
 
 // NewPolicyEngine creates a new policy engine
-func NewPolicyEngine(rbacEngine RBACEngine) PolicyEngine {
+func NewPolicyEngine(rbacEngine RBACEngine, adminRepo *AdminRepository, policyRepo *PolicyRepository) PolicyEngine {
 	return &PolicyEngineImpl{
 		policies:    make(map[string]*SecurityPolicy),
 		rlsPolicies: make(map[string]*RLSPolicy),
 		rbacEngine:  rbacEngine,
+		adminRepo:   adminRepo,
+		policyRepo:  policyRepo,
 	}
 }
 

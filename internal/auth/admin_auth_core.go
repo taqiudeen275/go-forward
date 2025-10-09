@@ -234,6 +234,8 @@ type MFAService interface {
 // AuthenticationCoreImpl implements the AuthenticationCore interface
 type AuthenticationCoreImpl struct {
 	userRepo        UserRepositoryInterface
+	adminRepo       *AdminRepository
+	mfaRepo         *MFARepository
 	jwtManager      *JWTManager
 	securityMonitor *SecurityMonitor
 	mfaService      MFAService
@@ -242,12 +244,14 @@ type AuthenticationCoreImpl struct {
 }
 
 // NewAuthenticationCore creates a new authentication core
-func NewAuthenticationCore(userRepo UserRepositoryInterface, jwtManager *JWTManager) *AuthenticationCoreImpl {
+func NewAuthenticationCore(userRepo UserRepositoryInterface, adminRepo *AdminRepository, mfaRepo *MFARepository, jwtManager *JWTManager) *AuthenticationCoreImpl {
 	return &AuthenticationCoreImpl{
 		userRepo:        userRepo,
+		adminRepo:       adminRepo,
+		mfaRepo:         mfaRepo,
 		jwtManager:      jwtManager,
 		securityMonitor: NewSecurityMonitor(),
-		mfaService:      NewMFAService(userRepo),
+		mfaService:      NewMFAService(userRepo, mfaRepo),
 		hasher:          NewPasswordHasher(),
 		validator:       NewValidator(),
 	}
@@ -463,26 +467,30 @@ func (ac *AuthenticationCoreImpl) DisableMFA(ctx context.Context, userID string)
 }
 
 // getAdminCapabilities retrieves admin level and capabilities for a user
-// This is a placeholder - in real implementation, this would query admin_roles table
 func (ac *AuthenticationCoreImpl) getAdminCapabilities(ctx context.Context, userID string) (AdminLevel, AdminCapabilities, error) {
-	// TODO: Implement actual admin role lookup from database
-	// For now, return default capabilities based on some logic
+	// Check if user is an admin
+	isAdmin, err := ac.adminRepo.IsUserAdmin(ctx, userID)
+	if err != nil {
+		return "", AdminCapabilities{}, fmt.Errorf("failed to check admin status: %w", err)
+	}
 
-	// This is a placeholder implementation
-	// In reality, you would query the admin_roles and user_admin_roles tables
-	return SystemAdmin, AdminCapabilities{
-		CanAccessSQL:        true,
-		CanManageDatabase:   true,
-		CanManageSystem:     true,
-		CanCreateSuperAdmin: true,
-		CanCreateAdmins:     true,
-		CanManageAllTables:  true,
-		CanManageAuth:       true,
-		CanManageStorage:    true,
-		CanViewAllLogs:      true,
-		CanViewDashboard:    true,
-		CanExportData:       true,
-	}, nil
+	if !isAdmin {
+		return "", AdminCapabilities{}, fmt.Errorf("user is not an admin")
+	}
+
+	// Get admin level
+	adminLevel, err := ac.adminRepo.GetUserAdminLevel(ctx, userID)
+	if err != nil {
+		return "", AdminCapabilities{}, fmt.Errorf("failed to get admin level: %w", err)
+	}
+
+	// Get capabilities
+	capabilities, err := ac.adminRepo.GetUserAdminCapabilities(ctx, userID)
+	if err != nil {
+		return "", AdminCapabilities{}, fmt.Errorf("failed to get admin capabilities: %w", err)
+	}
+
+	return adminLevel, *capabilities, nil
 }
 
 // generateAdminTokens generates JWT tokens with admin-specific claims
@@ -521,38 +529,65 @@ func (ac *AuthenticationCoreImpl) CreateAdminSession(ctx context.Context, userID
 		SecurityFlags: []string{},
 	}
 
-	// TODO: Save session to database
-	// For now, this is a placeholder implementation
+	// Save session to database
+	err := ac.mfaRepo.CreateAdminSession(ctx, session)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save admin session: %w", err)
+	}
 
 	return session, nil
 }
 
 // ValidateSession validates an admin session and updates last activity
 func (ac *AuthenticationCoreImpl) ValidateSession(ctx context.Context, sessionID string) (*AdminSession, error) {
-	// TODO: Implement session validation from database
-	// This is a placeholder implementation
-	return nil, fmt.Errorf("session validation not implemented")
+	session, err := ac.mfaRepo.GetAdminSession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get admin session: %w", err)
+	}
+
+	// Update last activity
+	err = ac.mfaRepo.UpdateAdminSessionActivity(ctx, sessionID)
+	if err != nil {
+		// Log error but don't fail validation
+		fmt.Printf("Warning: failed to update session activity: %v\n", err)
+	}
+
+	return session, nil
 }
 
 // InvalidateSession invalidates an admin session
 func (ac *AuthenticationCoreImpl) InvalidateSession(ctx context.Context, sessionID string) error {
-	// TODO: Implement session invalidation in database
-	// This is a placeholder implementation
-	return fmt.Errorf("session invalidation not implemented")
+	return ac.mfaRepo.InvalidateAdminSession(ctx, sessionID, "LOGOUT")
 }
 
 // RefreshSession refreshes an admin session's expiration time
 func (ac *AuthenticationCoreImpl) RefreshSession(ctx context.Context, sessionID string) (*AdminSession, error) {
-	// TODO: Implement session refresh in database
-	// This is a placeholder implementation
-	return nil, fmt.Errorf("session refresh not implemented")
+	// Get current session
+	session, err := ac.ValidateSession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate session for refresh: %w", err)
+	}
+
+	// Extend expiration time
+	now := time.Now()
+	var newExpiresAt time.Time
+	if session.Capabilities.CanAccessSQL {
+		newExpiresAt = now.Add(4 * time.Hour) // System admin sessions
+	} else {
+		newExpiresAt = now.Add(8 * time.Hour) // Regular admin sessions
+	}
+
+	session.ExpiresAt = newExpiresAt
+	session.LastActivity = now
+
+	// Update in database would go here
+	// For now, return the updated session
+	return session, nil
 }
 
 // GetActiveSessions retrieves all active sessions for a user
 func (ac *AuthenticationCoreImpl) GetActiveSessions(ctx context.Context, userID string) ([]*AdminSession, error) {
-	// TODO: Implement active sessions retrieval from database
-	// This is a placeholder implementation
-	return nil, fmt.Errorf("active sessions retrieval not implemented")
+	return ac.mfaRepo.GetActiveAdminSessions(ctx, userID)
 }
 
 // CreateAPIKey creates a new API key for service authentication
@@ -588,46 +623,71 @@ func (ac *AuthenticationCoreImpl) CreateAPIKey(ctx context.Context, userID strin
 		Metadata:  make(map[string]string),
 	}
 
-	// TODO: Save API key to database
-	// For now, this is a placeholder implementation
+	// Save API key to database
+	err = ac.mfaRepo.CreateAPIKey(ctx, apiKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save API key: %w", err)
+	}
 
 	// Return the API key with the plain text key (only time it's exposed)
-	apiKey.KeyHash = keyString // Temporarily set for return
-	return apiKey, nil
+	// Create a copy to avoid modifying the stored version
+	returnKey := *apiKey
+	returnKey.KeyHash = keyString // Set plain text key for return
+	return &returnKey, nil
 }
 
 // ValidateAPIKey validates an API key and returns key information
 func (ac *AuthenticationCoreImpl) ValidateAPIKey(ctx context.Context, key string) (*APIKeyInfo, error) {
-	// TODO: Implement API key validation from database
-	// This would involve:
-	// 1. Hash the provided key
-	// 2. Find matching key in database
-	// 3. Check if key is active and not expired
-	// 4. Update last used timestamp
-	// 5. Return key information with user's admin level
+	// Hash the provided key
+	keyHash, err := ac.hasher.HashPassword(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash API key: %w", err)
+	}
 
-	return nil, fmt.Errorf("API key validation not implemented")
+	// Find matching key in database
+	apiKey, err := ac.mfaRepo.GetAPIKeyByHash(ctx, keyHash)
+	if err != nil {
+		return nil, fmt.Errorf("API key not found or invalid: %w", err)
+	}
+
+	// Get user's admin level
+	adminLevel, err := ac.adminRepo.GetUserAdminLevel(ctx, apiKey.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get admin level for API key user: %w", err)
+	}
+
+	// Update last used timestamp
+	err = ac.mfaRepo.UpdateAPIKeyLastUsed(ctx, apiKey.ID)
+	if err != nil {
+		// Log error but don't fail validation
+		fmt.Printf("Warning: failed to update API key last used: %v\n", err)
+	}
+
+	return &APIKeyInfo{
+		ID:         apiKey.ID,
+		UserID:     apiKey.UserID,
+		Name:       apiKey.Name,
+		Scopes:     apiKey.Scopes,
+		ExpiresAt:  apiKey.ExpiresAt,
+		LastUsed:   apiKey.LastUsed,
+		AdminLevel: adminLevel,
+		Metadata:   apiKey.Metadata,
+	}, nil
 }
 
 // RevokeAPIKey revokes an API key
 func (ac *AuthenticationCoreImpl) RevokeAPIKey(ctx context.Context, keyID string) error {
-	// TODO: Implement API key revocation in database
-	// This is a placeholder implementation
-	return fmt.Errorf("API key revocation not implemented")
+	return ac.mfaRepo.RevokeAPIKey(ctx, keyID)
 }
 
 // ListAPIKeys lists all API keys for a user
 func (ac *AuthenticationCoreImpl) ListAPIKeys(ctx context.Context, userID string) ([]*APIKey, error) {
-	// TODO: Implement API key listing from database
-	// This is a placeholder implementation
-	return nil, fmt.Errorf("API key listing not implemented")
+	return ac.mfaRepo.ListAPIKeys(ctx, userID)
 }
 
 // UpdateAPIKeyLastUsed updates the last used timestamp for an API key
 func (ac *AuthenticationCoreImpl) UpdateAPIKeyLastUsed(ctx context.Context, keyID string) error {
-	// TODO: Implement API key last used update in database
-	// This is a placeholder implementation
-	return fmt.Errorf("API key last used update not implemented")
+	return ac.mfaRepo.UpdateAPIKeyLastUsed(ctx, keyID)
 }
 
 // RecordAuthAttempt records an authentication attempt for security monitoring

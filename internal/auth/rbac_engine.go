@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -108,15 +107,16 @@ const (
 // RBACEngineImpl implements the RBACEngine interface
 type RBACEngineImpl struct {
 	userRepo        UserRepositoryInterface
+	adminRepo       *AdminRepository
 	permissionCache *PermissionCacheImpl
 	roleHierarchy   map[AdminLevel]int // Level priority for hierarchy
-	mutex           sync.RWMutex
 }
 
 // NewRBACEngine creates a new RBAC engine
-func NewRBACEngine(userRepo UserRepositoryInterface) RBACEngine {
+func NewRBACEngine(userRepo UserRepositoryInterface, adminRepo *AdminRepository) RBACEngine {
 	return &RBACEngineImpl{
 		userRepo:        userRepo,
+		adminRepo:       adminRepo,
 		permissionCache: NewPermissionCache(),
 		roleHierarchy: map[AdminLevel]int{
 			SystemAdmin:  4, // Highest priority
@@ -140,9 +140,8 @@ func (rbac *RBACEngineImpl) CreateRole(ctx context.Context, role AdminRole) erro
 	}
 	role.CreatedAt = time.Now()
 
-	// TODO: Implement database storage
-	// This would save the role to admin_roles table
-	return fmt.Errorf("role creation not implemented")
+	// Create role using admin repository
+	return rbac.adminRepo.CreateAdminRole(ctx, &role)
 }
 
 // UpdateRole updates an existing admin role
@@ -164,14 +163,37 @@ func (rbac *RBACEngineImpl) DeleteRole(ctx context.Context, roleID string) error
 
 // GetRole retrieves a role by ID
 func (rbac *RBACEngineImpl) GetRole(ctx context.Context, roleID string) (*AdminRole, error) {
-	// TODO: Implement database lookup
-	return nil, fmt.Errorf("role retrieval not implemented")
+	// For now, we'll implement a simple lookup by querying all roles
+	// In a full implementation, this would be a direct database query
+	roles, err := rbac.ListRoles(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, role := range roles {
+		if role.ID == roleID {
+			return role, nil
+		}
+	}
+
+	return nil, fmt.Errorf("role not found: %s", roleID)
 }
 
 // ListRoles lists all admin roles
 func (rbac *RBACEngineImpl) ListRoles(ctx context.Context) ([]*AdminRole, error) {
-	// TODO: Implement database query
-	return nil, fmt.Errorf("role listing not implemented")
+	// Get roles for each level and combine them
+	var allRoles []*AdminRole
+
+	levels := []AdminLevel{SystemAdmin, SuperAdmin, RegularAdmin, Moderator}
+	for _, level := range levels {
+		roles, err := rbac.adminRepo.GetAdminRolesByLevel(ctx, level)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get roles for level %s: %w", level, err)
+		}
+		allRoles = append(allRoles, roles...)
+	}
+
+	return allRoles, nil
 }
 
 // AssignRole assigns a role to a user
@@ -182,46 +204,35 @@ func (rbac *RBACEngineImpl) AssignRole(ctx context.Context, userID string, roleI
 		return fmt.Errorf("user not found: %w", err)
 	}
 
-	// TODO: Validate that role exists and granter has permission
-
-	// Create role assignment
-	assignment := UserAdminRole{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		RoleID:    roleID,
-		GrantedBy: grantedBy,
-		GrantedAt: time.Now(),
-		IsActive:  true,
-		Metadata:  make(map[string]string),
+	// Assign role using admin repository
+	err = rbac.adminRepo.AssignAdminRole(ctx, userID, roleID, grantedBy)
+	if err != nil {
+		return fmt.Errorf("failed to assign role: %w", err)
 	}
-
-	// TODO: Save to database (user_admin_roles table)
-	_ = assignment
 
 	// Invalidate user's permission cache
 	rbac.InvalidateUserCache(ctx, userID)
 
-	return fmt.Errorf("role assignment not implemented")
+	return nil
 }
 
 // RevokeRole revokes a role from a user
 func (rbac *RBACEngineImpl) RevokeRole(ctx context.Context, userID string, roleID string, revokedBy string) error {
-	// TODO: Implement role revocation
-	// This would:
-	// 1. Find the role assignment
-	// 2. Mark it as inactive or delete it
-	// 3. Log the revocation
-	// 4. Invalidate user's permission cache
+	// Revoke role using admin repository
+	err := rbac.adminRepo.RevokeAdminRole(ctx, userID, roleID, revokedBy)
+	if err != nil {
+		return fmt.Errorf("failed to revoke role: %w", err)
+	}
 
+	// Invalidate user's permission cache
 	rbac.InvalidateUserCache(ctx, userID)
-	return fmt.Errorf("role revocation not implemented")
+
+	return nil
 }
 
 // GetUserRoles retrieves all roles assigned to a user
 func (rbac *RBACEngineImpl) GetUserRoles(ctx context.Context, userID string) ([]*AdminRole, error) {
-	// TODO: Implement database query
-	// This would join user_admin_roles with admin_roles
-	return nil, fmt.Errorf("user roles retrieval not implemented")
+	return rbac.adminRepo.GetUserAdminRoles(ctx, userID)
 }
 
 // GetRoleUsers retrieves all users assigned to a role
@@ -256,33 +267,7 @@ func (rbac *RBACEngineImpl) CheckPermission(ctx context.Context, userID string, 
 
 // GetUserCapabilities retrieves effective capabilities for a user
 func (rbac *RBACEngineImpl) GetUserCapabilities(ctx context.Context, userID string) (*AdminCapabilities, error) {
-	// Get user roles
-	roles, err := rbac.GetUserRoles(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user roles: %w", err)
-	}
-
-	if len(roles) == 0 {
-		return nil, fmt.Errorf("user has no admin roles")
-	}
-
-	// Merge capabilities from all roles (highest level wins)
-	var effectiveCapabilities AdminCapabilities
-	highestLevel := 0
-
-	for _, role := range roles {
-		if level, exists := rbac.roleHierarchy[role.Level]; exists && level > highestLevel {
-			highestLevel = level
-			effectiveCapabilities = role.Capabilities
-		}
-	}
-
-	// Merge additional capabilities from lower-level roles
-	for _, role := range roles {
-		rbac.mergeCapabilities(&effectiveCapabilities, role.Capabilities)
-	}
-
-	return &effectiveCapabilities, nil
+	return rbac.adminRepo.GetUserAdminCapabilities(ctx, userID)
 }
 
 // EvaluatePolicy evaluates a security policy against a context
@@ -304,16 +289,16 @@ func (rbac *RBACEngineImpl) EvaluatePolicy(ctx context.Context, policy SecurityP
 
 // GetRoleHierarchy returns the role hierarchy organized by level
 func (rbac *RBACEngineImpl) GetRoleHierarchy(ctx context.Context) (map[AdminLevel][]*AdminRole, error) {
-	// Get all roles
-	roles, err := rbac.ListRoles(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// Organize by level
 	hierarchy := make(map[AdminLevel][]*AdminRole)
-	for _, role := range roles {
-		hierarchy[role.Level] = append(hierarchy[role.Level], role)
+
+	// Get roles for each level
+	levels := []AdminLevel{SystemAdmin, SuperAdmin, RegularAdmin, Moderator}
+	for _, level := range levels {
+		roles, err := rbac.adminRepo.GetAdminRolesByLevel(ctx, level)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get roles for level %s: %w", level, err)
+		}
+		hierarchy[level] = roles
 	}
 
 	return hierarchy, nil
@@ -509,32 +494,8 @@ func (rbac *RBACEngineImpl) mergeCapabilities(base *AdminCapabilities, additiona
 	base.CanExportData = base.CanExportData || additional.CanExportData
 
 	// Merge arrays (union operation)
-	base.AssignedTables = rbac.mergeStringArrays(base.AssignedTables, additional.AssignedTables)
-	base.AssignedUserGroups = rbac.mergeStringArrays(base.AssignedUserGroups, additional.AssignedUserGroups)
-}
-
-// mergeStringArrays merges two string arrays, removing duplicates
-func (rbac *RBACEngineImpl) mergeStringArrays(arr1, arr2 []string) []string {
-	seen := make(map[string]bool)
-	result := make([]string, 0)
-
-	// Add items from first array
-	for _, item := range arr1 {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-
-	// Add items from second array
-	for _, item := range arr2 {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-
-	return result
+	base.AssignedTables = append(base.AssignedTables, additional.AssignedTables...)
+	base.AssignedUserGroups = append(base.AssignedUserGroups, additional.AssignedUserGroups...)
 }
 
 // hashSecurityContext creates a hash of the security context for caching
