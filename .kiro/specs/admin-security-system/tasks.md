@@ -81,6 +81,7 @@
 
 - [x] 3. CLI Admin Management System
 
+
   - Create CLI commands for system admin creation and management
   - Implement environment detection and security policies
   - Build bootstrap functionality for new deployments
@@ -95,7 +96,8 @@
   - Build list-admins command with role information
   - _Requirements: 2.1, 2.4_
 
-- [ ] 3.2 Add environment-aware security policies
+- [x] 3.2 Add environment-aware security policies
+
 
   - Implement environment detection (dev/staging/prod)
   - Create environment-specific security requirements
@@ -104,7 +106,8 @@
   - Build configuration validation for each environment
   - _Requirements: 2.2, 2.6, 10.1_
 
-- [ ] 3.3 Create bootstrap and emergency access
+- [x] 3.3 Create bootstrap and emergency access
+
 
   - Implement framework initialization commands
 
