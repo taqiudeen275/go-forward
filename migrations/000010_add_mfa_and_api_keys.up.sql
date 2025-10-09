@@ -63,7 +63,7 @@ CREATE TRIGGER update_api_keys_updated_at
 
 -- Create function to clean up expired API keys
 CREATE OR REPLACE FUNCTION cleanup_expired_api_keys()
-RETURNS INTEGER AS $
+RETURNS INTEGER AS $$
 DECLARE
     expired_count INTEGER;
 BEGIN
@@ -79,11 +79,11 @@ BEGIN
     GET DIAGNOSTICS expired_count = ROW_COUNT;
     RETURN expired_count;
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';
 
 -- Create function to validate API key scopes
 CREATE OR REPLACE FUNCTION validate_api_key_scopes(scopes JSONB)
-RETURNS BOOLEAN AS $
+RETURNS BOOLEAN AS $$
 BEGIN
     -- Validate that scopes is an array
     IF jsonb_typeof(scopes) != 'array' THEN
@@ -101,7 +101,7 @@ BEGIN
     
     RETURN TRUE;
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';
 
 -- Add constraint to validate API key scopes
 ALTER TABLE api_keys 
@@ -110,13 +110,13 @@ CHECK (validate_api_key_scopes(scopes));
 
 -- Create function to hash backup codes (placeholder for application-level hashing)
 CREATE OR REPLACE FUNCTION hash_backup_codes(codes JSONB)
-RETURNS JSONB AS $
+RETURNS JSONB AS $$
 BEGIN
     -- In production, backup codes should be hashed at the application level
     -- This function is a placeholder for validation
     RETURN codes;
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';
 
 -- Create function to generate API key statistics
 CREATE OR REPLACE FUNCTION get_api_key_stats(p_user_id UUID DEFAULT NULL)
@@ -125,7 +125,7 @@ RETURNS TABLE (
     active_keys INTEGER,
     expired_keys INTEGER,
     recently_used INTEGER
-) AS $
+) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
@@ -136,7 +136,7 @@ BEGIN
     FROM api_keys
     WHERE (p_user_id IS NULL OR user_id = p_user_id);
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';
 
 -- Create function to get MFA statistics
 CREATE OR REPLACE FUNCTION get_mfa_stats()
@@ -145,7 +145,7 @@ RETURNS TABLE (
     totp_enabled INTEGER,
     backup_codes_enabled INTEGER,
     recently_used INTEGER
-) AS $
+) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
@@ -156,4 +156,4 @@ BEGIN
     FROM mfa_configurations
     WHERE is_enabled = TRUE;
 END;
-$ language 'plpgsql';
+$$ language 'plpgsql';
