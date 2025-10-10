@@ -105,6 +105,14 @@ func (v *sqlValidator) CheckForbiddenPatterns(query string, patterns []string) (
 	// Check built-in forbidden patterns
 	for _, pattern := range v.forbiddenPatterns {
 		if pattern.Pattern.MatchString(normalizedQuery) {
+			// Special handling for UPDATE/DELETE without WHERE
+			if pattern.Name == "UPDATE_WITHOUT_WHERE" || pattern.Name == "DELETE_WITHOUT_WHERE" {
+				// Check if WHERE clause exists
+				if strings.Contains(normalizedQuery, "WHERE") {
+					continue // Skip if WHERE clause is present
+				}
+			}
+
 			match := PatternMatch{
 				Pattern:     pattern.Name,
 				Match:       pattern.Pattern.FindString(normalizedQuery),
@@ -429,7 +437,7 @@ func initializeForbiddenPatterns() []ForbiddenPattern {
 			Suggestion:  "Add WHERE clause to limit deletion scope",
 		},
 		{
-			Pattern:     regexp.MustCompile(`UPDATE\s+[a-zA-Z_][a-zA-Z0-9_]*\s+SET\s+.*?(?:;|$)(?!.*WHERE)`),
+			Pattern:     regexp.MustCompile(`UPDATE\s+[a-zA-Z_][a-zA-Z0-9_]*\s+SET\s+.*?(?:;|$)`),
 			Name:        "UPDATE_WITHOUT_WHERE",
 			Severity:    SeverityHigh,
 			Description: "UPDATE without WHERE clause will modify all rows",

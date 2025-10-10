@@ -287,11 +287,8 @@ func (s *sqlSecurityService) AnalyzeQuery(query string) (*QueryAnalysis, error) 
 		Performance:    s.analyzePerformance(parsed),
 	}
 
-	// Estimate cost (simplified)
-	analysis.EstimatedCost = int64(len(parsed.Tables) * 100)
-	if parsed.HasSubqueries {
-		analysis.EstimatedCost *= 2
-	}
+	// Estimate cost based on query complexity
+	analysis.EstimatedCost = s.estimateQueryCost(parsed)
 
 	return analysis, nil
 }
@@ -409,9 +406,56 @@ func (s *sqlSecurityService) getAllowedOperations(userRoles []string) []string {
 }
 
 func (s *sqlSecurityService) getUserTablePermissions(userRoles []string) []TablePermission {
-	// This would typically fetch from database based on user roles
-	// For now, return empty slice - implement based on your permission system
-	return []TablePermission{}
+	permissions := []TablePermission{}
+
+	// Define role-based table permissions
+	rolePermissions := map[string][]TablePermission{
+		"system_admin": {
+			{TableName: "*", SchemaName: "*", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"}},
+		},
+		"super_admin": {
+			{TableName: "*", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER"}},
+			{TableName: "users", SchemaName: "*", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE"}},
+			{TableName: "admin_*", SchemaName: "*", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE"}},
+		},
+		"regular_admin": {
+			{TableName: "users", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE"}},
+			{TableName: "user_*", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE"}},
+			{TableName: "content", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE"}},
+			{TableName: "settings", SchemaName: "public", Operations: []string{"SELECT", "UPDATE"}},
+		},
+		"moderator": {
+			{TableName: "content", SchemaName: "public", Operations: []string{"SELECT", "UPDATE"}},
+			{TableName: "comments", SchemaName: "public", Operations: []string{"SELECT", "UPDATE", "DELETE"}},
+			{TableName: "reports", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE"}},
+		},
+		"user_manager": {
+			{TableName: "users", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE"}},
+			{TableName: "user_profiles", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE"}},
+			{TableName: "user_sessions", SchemaName: "public", Operations: []string{"SELECT", "DELETE"}},
+		},
+		"content_manager": {
+			{TableName: "content", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE"}},
+			{TableName: "media", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE", "DELETE"}},
+			{TableName: "categories", SchemaName: "public", Operations: []string{"SELECT", "INSERT", "UPDATE"}},
+		},
+	}
+
+	// Collect permissions for all user roles
+	for _, role := range userRoles {
+		if rolePerms, exists := rolePermissions[strings.ToLower(role)]; exists {
+			permissions = append(permissions, rolePerms...)
+		}
+	}
+
+	// If no specific permissions found, provide minimal read access for authenticated users
+	if len(permissions) == 0 && len(userRoles) > 0 {
+		permissions = []TablePermission{
+			{TableName: "public_content", SchemaName: "public", Operations: []string{"SELECT"}},
+		}
+	}
+
+	return permissions
 }
 
 func (s *sqlSecurityService) assessQueryRiskLevel(parsed *ParsedQuery) RiskLevel {
@@ -537,4 +581,63 @@ func (s *sqlSecurityService) riskLevelToSeverity(risk RiskLevel) SecuritySeverit
 	default:
 		return SeverityMedium
 	}
+}
+
+// estimateQueryCost estimates the computational cost of a query
+func (s *sqlSecurityService) estimateQueryCost(parsed *ParsedQuery) int64 {
+	baseCost := int64(50) // Base cost for any query
+
+	// Cost based on query type
+	switch parsed.QueryType {
+	case QueryTypeSelect:
+		baseCost += 100
+	case QueryTypeInsert:
+		baseCost += 200
+	case QueryTypeUpdate:
+		baseCost += 300
+	case QueryTypeDelete:
+		baseCost += 400
+	case QueryTypeCreate:
+		baseCost += 500
+	case QueryTypeDrop:
+		baseCost += 600
+	case QueryTypeAlter:
+		baseCost += 700
+	default:
+		baseCost += 150
+	}
+
+	// Cost multiplier based on number of tables
+	tableMultiplier := int64(len(parsed.Tables))
+	if tableMultiplier == 0 {
+		tableMultiplier = 1
+	}
+	baseCost *= tableMultiplier
+
+	// Additional cost for complex operations
+	if parsed.HasSubqueries {
+		baseCost *= 3 // Subqueries are expensive
+	}
+
+	// Check for joins by looking at table count and conditions
+	if len(parsed.Tables) > 1 {
+		baseCost *= 2 // Multiple tables likely means joins
+	}
+
+	// Cost based on estimated complexity
+	if len(parsed.Columns) > 10 {
+		baseCost += int64(len(parsed.Columns) * 10)
+	}
+
+	// Operations without WHERE clause are more expensive (full table scan)
+	if len(parsed.Conditions) == 0 && (parsed.QueryType == QueryTypeUpdate || parsed.QueryType == QueryTypeDelete) {
+		baseCost *= 5
+	}
+
+	// DDL operations have higher base cost
+	if s.isDDLOperation(parsed.QueryType) {
+		baseCost *= 2
+	}
+
+	return baseCost
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -786,34 +787,327 @@ func (s *sqlAuditSystem) generateCacheKey(filter StatisticsFilter) string {
 		filter.UserID, filter.QueryType)
 }
 
-// Placeholder implementations for statistics methods
+// getBasicStatistics retrieves basic query statistics from the audit log
 func (s *sqlAuditSystem) getBasicStatistics(stats *QueryStatistics, filter StatisticsFilter) error {
-	// Implementation would query the database for basic statistics
+	query := `
+		SELECT 
+			COUNT(*) as total_queries,
+			COUNT(DISTINCT user_id) as unique_users,
+			AVG(execution_time_ms) as avg_execution_time,
+			MAX(execution_time_ms) as max_execution_time,
+			MIN(execution_time_ms) as min_execution_time,
+			SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_queries,
+			SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as failed_queries
+		FROM sql_audit_log 
+		WHERE created_at >= $1 AND created_at <= $2`
+
+	args := []interface{}{filter.TimeRange.Start, filter.TimeRange.End}
+	argIndex := 3
+
+	if filter.UserID != "" {
+		query += fmt.Sprintf(" AND user_id = $%d", argIndex)
+		args = append(args, filter.UserID)
+		argIndex++
+	}
+
+	if filter.QueryType != "" {
+		query += fmt.Sprintf(" AND query_type = $%d", argIndex)
+		args = append(args, filter.QueryType)
+		argIndex++
+	}
+
+	var totalQueries, uniqueUsers, successfulQueries, failedQueries int64
+	var avgExecTime, maxExecTime, minExecTime float64
+
+	err := s.db.QueryRow(query, args...).Scan(
+		&totalQueries, &uniqueUsers, &avgExecTime, &maxExecTime, &minExecTime,
+		&successfulQueries, &failedQueries,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to get basic statistics: %w", err)
+	}
+
+	stats.TotalQueries = totalQueries
+	stats.AverageExecutionTime = time.Duration(avgExecTime) * time.Millisecond
+	stats.SuccessfulQueries = successfulQueries
+	stats.FailedQueries = failedQueries
+
 	return nil
 }
 
 func (s *sqlAuditSystem) getQueryTypeBreakdown(stats *QueryStatistics, filter StatisticsFilter) error {
-	// Implementation would query for query type breakdown
-	return nil
+	query := `
+		SELECT 
+			query_type,
+			COUNT(*) as count,
+			AVG(execution_time_ms) as avg_execution_time,
+			SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_count,
+			SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as failed_count
+		FROM sql_audit_log 
+		WHERE created_at >= $1 AND created_at <= $2`
+
+	args := []interface{}{filter.TimeRange.Start, filter.TimeRange.End}
+	argIndex := 3
+
+	if filter.UserID != "" {
+		query += fmt.Sprintf(" AND user_id = $%d", argIndex)
+		args = append(args, filter.UserID)
+		argIndex++
+	}
+
+	query += " GROUP BY query_type ORDER BY count DESC"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to get query type breakdown: %w", err)
+	}
+	defer rows.Close()
+
+	if stats.QueryTypeBreakdown == nil {
+		stats.QueryTypeBreakdown = make(map[QueryType]int64)
+	}
+
+	for rows.Next() {
+		var queryType string
+		var count, successfulCount, failedCount int64
+		var avgExecTime float64
+
+		err := rows.Scan(&queryType, &count, &avgExecTime, &successfulCount, &failedCount)
+		if err != nil {
+			return fmt.Errorf("failed to scan query type breakdown: %w", err)
+		}
+
+		// Convert string to QueryType
+		qt := QueryType(strings.ToUpper(queryType))
+		stats.QueryTypeBreakdown[qt] = count
+	}
+
+	return rows.Err()
 }
 
 func (s *sqlAuditSystem) getRiskLevelBreakdown(stats *QueryStatistics, filter StatisticsFilter) error {
-	// Implementation would query for risk level breakdown
-	return nil
+	query := `
+		SELECT 
+			risk_level,
+			COUNT(*) as count,
+			AVG(execution_time_ms) as avg_execution_time,
+			COUNT(DISTINCT user_id) as unique_users
+		FROM sql_audit_log 
+		WHERE created_at >= $1 AND created_at <= $2`
+
+	args := []interface{}{filter.TimeRange.Start, filter.TimeRange.End}
+	argIndex := 3
+
+	if filter.UserID != "" {
+		query += fmt.Sprintf(" AND user_id = $%d", argIndex)
+		args = append(args, filter.UserID)
+		argIndex++
+	}
+
+	if filter.QueryType != "" {
+		query += fmt.Sprintf(" AND query_type = $%d", argIndex)
+		args = append(args, filter.QueryType)
+		argIndex++
+	}
+
+	query += " GROUP BY risk_level ORDER BY count DESC"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to get risk level breakdown: %w", err)
+	}
+	defer rows.Close()
+
+	if stats.RiskLevelBreakdown == nil {
+		stats.RiskLevelBreakdown = make(map[RiskLevel]int64)
+	}
+
+	for rows.Next() {
+		var riskLevel string
+		var count, uniqueUsers int64
+		var avgExecTime float64
+
+		err := rows.Scan(&riskLevel, &count, &avgExecTime, &uniqueUsers)
+		if err != nil {
+			return fmt.Errorf("failed to scan risk level breakdown: %w", err)
+		}
+
+		// Convert string to RiskLevel
+		rl := RiskLevel(strings.ToUpper(riskLevel))
+		stats.RiskLevelBreakdown[rl] = count
+	}
+
+	return rows.Err()
 }
 
 func (s *sqlAuditSystem) getTopUsers(stats *QueryStatistics, filter StatisticsFilter) error {
-	// Implementation would query for top users
-	return nil
+	query := `
+		SELECT 
+			user_id,
+			COUNT(*) as query_count,
+			AVG(execution_time_ms) as avg_execution_time,
+			SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count,
+			MAX(created_at) as last_activity
+		FROM sql_audit_log 
+		WHERE created_at >= $1 AND created_at <= $2`
+
+	args := []interface{}{filter.TimeRange.Start, filter.TimeRange.End}
+	argIndex := 3
+
+	if filter.QueryType != "" {
+		query += fmt.Sprintf(" AND query_type = $%d", argIndex)
+		args = append(args, filter.QueryType)
+		argIndex++
+	}
+
+	query += " GROUP BY user_id ORDER BY query_count DESC LIMIT 10"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to get top users: %w", err)
+	}
+	defer rows.Close()
+
+	stats.TopUsers = make([]UserQueryStats, 0)
+
+	for rows.Next() {
+		var userID string
+		var queryCount, errorCount int64
+		var avgExecTime float64
+		var lastActivity time.Time
+
+		err := rows.Scan(&userID, &queryCount, &avgExecTime, &errorCount, &lastActivity)
+		if err != nil {
+			return fmt.Errorf("failed to scan top users: %w", err)
+		}
+
+		failureRate := float64(0)
+		if queryCount > 0 {
+			failureRate = float64(errorCount) / float64(queryCount)
+		}
+
+		stats.TopUsers = append(stats.TopUsers, UserQueryStats{
+			UserID:      userID,
+			QueryCount:  queryCount,
+			FailureRate: failureRate,
+			AvgExecTime: time.Duration(avgExecTime) * time.Millisecond,
+			RiskScore:   failureRate * 100, // Simple risk score based on failure rate
+		})
+	}
+
+	return rows.Err()
 }
 
 func (s *sqlAuditSystem) getTopTables(stats *QueryStatistics, filter StatisticsFilter) error {
-	// Implementation would query for top tables
-	return nil
+	query := `
+		SELECT 
+			table_name,
+			COUNT(*) as access_count,
+			AVG(execution_time_ms) as avg_execution_time,
+			COUNT(DISTINCT user_id) as unique_users,
+			MAX(created_at) as last_accessed
+		FROM sql_audit_log 
+		WHERE created_at >= $1 AND created_at <= $2 
+		AND table_name IS NOT NULL AND table_name != ''`
+
+	args := []interface{}{filter.TimeRange.Start, filter.TimeRange.End}
+	argIndex := 3
+
+	if filter.UserID != "" {
+		query += fmt.Sprintf(" AND user_id = $%d", argIndex)
+		args = append(args, filter.UserID)
+		argIndex++
+	}
+
+	if filter.QueryType != "" {
+		query += fmt.Sprintf(" AND query_type = $%d", argIndex)
+		args = append(args, filter.QueryType)
+		argIndex++
+	}
+
+	query += " GROUP BY table_name ORDER BY access_count DESC LIMIT 10"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to get top tables: %w", err)
+	}
+	defer rows.Close()
+
+	stats.TopTables = make([]TableAccessStats, 0)
+
+	for rows.Next() {
+		var tableName string
+		var accessCount, uniqueUsers int64
+		var avgExecTime float64
+		var lastAccessed time.Time
+
+		err := rows.Scan(&tableName, &accessCount, &avgExecTime, &uniqueUsers, &lastAccessed)
+		if err != nil {
+			return fmt.Errorf("failed to scan top tables: %w", err)
+		}
+
+		stats.TopTables = append(stats.TopTables, TableAccessStats{
+			TableName:   tableName,
+			AccessCount: accessCount,
+			ReadCount:   accessCount, // Simplified - in real implementation, separate read/write counts
+			WriteCount:  0,
+			RiskScore:   float64(accessCount) / 100, // Simple risk score based on access frequency
+		})
+	}
+
+	return rows.Err()
 }
 
 func (s *sqlAuditSystem) getPerformanceMetrics(stats *QueryStatistics, filter StatisticsFilter) error {
-	// Implementation would query for performance metrics
+	query := `
+		SELECT 
+			PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY execution_time_ms) as median_execution_time,
+			PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY execution_time_ms) as p95_execution_time,
+			PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY execution_time_ms) as p99_execution_time,
+			COUNT(CASE WHEN execution_time_ms > 1000 THEN 1 END) as slow_queries,
+			COUNT(CASE WHEN execution_time_ms > 5000 THEN 1 END) as very_slow_queries,
+			AVG(CASE WHEN rows_affected IS NOT NULL THEN rows_affected ELSE 0 END) as avg_rows_affected,
+			MAX(rows_affected) as max_rows_affected
+		FROM sql_audit_log 
+		WHERE created_at >= $1 AND created_at <= $2`
+
+	args := []interface{}{filter.TimeRange.Start, filter.TimeRange.End}
+	argIndex := 3
+
+	if filter.UserID != "" {
+		query += fmt.Sprintf(" AND user_id = $%d", argIndex)
+		args = append(args, filter.UserID)
+		argIndex++
+	}
+
+	if filter.QueryType != "" {
+		query += fmt.Sprintf(" AND query_type = $%d", argIndex)
+		args = append(args, filter.QueryType)
+		argIndex++
+	}
+
+	var medianExecTime, p95ExecTime, p99ExecTime float64
+	var slowQueries, verySlowQueries int64
+	var avgRowsAffected, maxRowsAffected int64
+
+	err := s.db.QueryRow(query, args...).Scan(
+		&medianExecTime, &p95ExecTime, &p99ExecTime,
+		&slowQueries, &verySlowQueries,
+		&avgRowsAffected, &maxRowsAffected,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to get performance metrics: %w", err)
+	}
+
+	// Initialize PerformanceMetrics with available data
+	// Note: The actual PerformanceMetrics struct has different fields
+	// This is a simplified implementation that populates what we can
+	stats.PerformanceMetrics = PerformanceMetrics{
+		SlowestQueries: []SlowQueryInfo{},    // Would be populated with actual slow query data
+		QueryTrends:    []QueryTrendPoint{},  // Would be populated with trend data
+		ResourceUsage:  ResourceUsageStats{}, // Would be populated with resource usage data
+	}
+
 	return nil
 }
 

@@ -236,7 +236,7 @@ func DefaultSQLSecurityManagerConfig() *SQLSecurityManagerConfig {
 			ForbiddenPatterns: []string{
 				`DROP\s+DATABASE`,
 				`DELETE\s+FROM\s+\w+\s*(?:;|$)`,
-				`UPDATE\s+\w+\s+SET\s+.*?(?:;|$)(?!.*WHERE)`,
+				`UPDATE\s+\w+\s+SET\s+.*?(?:;|$)`,
 			},
 			SystemTablesAccess: map[string]bool{
 				"system_admin": true,
