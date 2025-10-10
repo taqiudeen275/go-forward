@@ -7,6 +7,7 @@ import (
 	"github.com/taqiudeen275/go-foward/internal/api"
 	"github.com/taqiudeen275/go-foward/internal/auth"
 	"github.com/taqiudeen275/go-foward/internal/config"
+	"github.com/taqiudeen275/go-foward/internal/dashboard"
 	"github.com/taqiudeen275/go-foward/internal/database"
 	"github.com/taqiudeen275/go-foward/internal/email"
 	"github.com/taqiudeen275/go-foward/internal/gateway"
@@ -32,6 +33,7 @@ type Server struct {
 	storageHandlers  *storage.Handlers
 	metaService      *database.MetaService
 	databaseHandlers *database.Handlers
+	dashboardHandler *dashboard.Handler
 }
 
 func New(cfg *config.Config, db *database.DB) *Server {
@@ -98,6 +100,10 @@ func New(cfg *config.Config, db *database.DB) *Server {
 	accessControl := storage.NewAccessControlService(db)
 	storageHandlers := storage.NewHandlers(storageService, accessControl)
 
+	// Initialize dashboard handler
+	dashboardConfig := dashboard.DefaultConfig()
+	dashboardHandler := dashboard.NewHandler(dashboardConfig)
+
 	return &Server{
 		config:           cfg,
 		logger:           log,
@@ -112,6 +118,7 @@ func New(cfg *config.Config, db *database.DB) *Server {
 		storageHandlers:  storageHandlers,
 		metaService:      metaService,
 		databaseHandlers: databaseHandlers,
+		dashboardHandler: dashboardHandler,
 	}
 }
 
@@ -173,6 +180,11 @@ func (s *Server) registerServices() {
 	// Register database meta service
 	if err := s.gateway.RegisterService(s.databaseHandlers); err != nil {
 		s.logger.Error("Failed to register database service: %v", err)
+	}
+
+	// Register dashboard service
+	if err := s.gateway.RegisterService(s.dashboardHandler); err != nil {
+		s.logger.Error("Failed to register dashboard service: %v", err)
 	}
 
 	s.logger.Info("All services registered successfully")
