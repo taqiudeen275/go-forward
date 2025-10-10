@@ -3,9 +3,10 @@
 		variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
 		size?: 'sm' | 'md' | 'lg';
 		rounded?: boolean;
+		children?: any;
 	}
 	
-	let { variant = 'default', size = 'md', rounded = false }: Props = $props();
+	let { variant = 'default', size = 'md', rounded = false, children }: Props = $props();
 	
 	const classes = $derived([
 		'inline-flex items-center font-medium',
@@ -37,5 +38,5 @@
 </script>
 
 <span class={classes}>
-	<slot />
+	{@render children?.()}
 </span>

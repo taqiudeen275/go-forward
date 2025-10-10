@@ -19,7 +19,7 @@ if (!existsSync(embedDir)) {
 }
 
 // Create Go embed file
-const embedGoContent = `package dashboard
+const embedGoContent = `package embed
 
 import "embed"
 

@@ -3,7 +3,6 @@ package embed
 import "embed"
 
 // Static assets for the admin dashboard
-//
 //go:embed build/*
 var StaticAssets embed.FS
 

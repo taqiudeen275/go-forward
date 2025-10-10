@@ -4,9 +4,10 @@
 		shadow?: 'none' | 'sm' | 'md' | 'lg';
 		border?: boolean;
 		hover?: boolean;
+		children?: any;
 	}
 	
-	let { padding = 'md', shadow = 'sm', border = true, hover = false }: Props = $props();
+	let { padding = 'md', shadow = 'sm', border = true, hover = false, children }: Props = $props();
 	
 	const classes = $derived([
 		'bg-white dark:bg-gray-800 rounded-lg transition-all duration-200',
@@ -38,5 +39,5 @@
 </script>
 
 <div class={classes}>
-	<slot />
+	{@render children?.()}
 </div>

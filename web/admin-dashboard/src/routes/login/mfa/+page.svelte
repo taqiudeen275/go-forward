@@ -221,9 +221,3 @@
 	</div>
 </div>
 
-<style>
-	/* Custom styles for MFA code display */
-	.mfa-code-display {
-		font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
-	}
-</style>

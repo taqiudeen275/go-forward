@@ -35,7 +35,7 @@ package main
 
 import (
     "github.com/gin-gonic/gin"
-    "your-project/internal/dashboard"
+    "go-forward/internal/dashboard"
 )
 
 func main() {

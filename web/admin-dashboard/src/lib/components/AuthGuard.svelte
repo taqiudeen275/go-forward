@@ -8,9 +8,10 @@
 	interface Props {
 		requiredRole?: AdminRole;
 		redirectTo?: string;
+		children?: any;
 	}
 	
-	let { requiredRole, redirectTo = '/login' }: Props = $props();
+	let { requiredRole, redirectTo = '/login', children }: Props = $props();
 	
 	// Public routes that don't require authentication
 	const publicRoutes = ['/login', '/login/mfa', '/login/forgot-password'];
@@ -100,5 +101,5 @@
 	</div>
 {:else}
 	<!-- Render children if authenticated and authorized -->
-	<slot />
+	{@render children?.()}
 {/if}
