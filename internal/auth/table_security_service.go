@@ -86,7 +86,7 @@ func (s *TableSecurityService) GetTableSecurityConfig(tableName, schemaName stri
 	}
 
 	// Generate current config hash for change detection
-	_, err = s.repo.GenerateConfigHash(config)
+	_, _ = s.repo.GenerateConfigHash(config)
 	// Note: ConfigHash field not available in this TableSecurityConfig structure
 
 	return config, nil

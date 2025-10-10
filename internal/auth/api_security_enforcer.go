@@ -630,7 +630,7 @@ func (e *APISecurityEnforcerImpl) processFilterExpression(expression string, use
 	}
 
 	// Replace admin level placeholder
-	processed = strings.ReplaceAll(processed, "{admin_level}", fmt.Sprintf("%d", userContext.AdminLevel))
+	processed = strings.ReplaceAll(processed, "{admin_level}", string(userContext.AdminLevel))
 
 	return processed
 }

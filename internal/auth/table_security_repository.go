@@ -654,17 +654,17 @@ func (r *TableSecurityRepository) isValidIPOrCIDR(ipStr string) bool {
 	return false
 }
 
-// validateConditionSyntax validates condition syntax (simplified)
+// validateConditionSyntax validates condition syntax with comprehensive security checks
 func (r *TableSecurityRepository) validateConditionSyntax(condition string) error {
-	// Basic validation - in production, use a proper expression parser
 	if condition == "" {
 		return fmt.Errorf("condition cannot be empty")
 	}
 
-	// Check for basic SQL injection patterns
+	// Check for SQL injection and dangerous patterns
 	dangerousPatterns := []string{
-		"DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE",
-		"--", "/*", "*/", ";",
+		"DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "TRUNCATE",
+		"--", "/*", "*/", ";", "EXEC", "EXECUTE", "UNION", "SCRIPT",
+		"DECLARE", "CAST", "CONVERT", "SUBSTRING", "CHAR", "ASCII",
 	}
 
 	upperCondition := strings.ToUpper(condition)
@@ -672,6 +672,46 @@ func (r *TableSecurityRepository) validateConditionSyntax(condition string) erro
 		if strings.Contains(upperCondition, pattern) {
 			return fmt.Errorf("condition contains potentially dangerous pattern: %s", pattern)
 		}
+	}
+
+	// Validate that condition uses only allowed placeholders
+	allowedPlaceholders := []string{
+		"{user_id}", "{admin_level}", "{mfa_verified}",
+		"{ip_address}", "{user_roles}", "{timestamp}",
+	}
+
+	// Check for placeholder usage
+	placeholderFound := false
+	for _, placeholder := range allowedPlaceholders {
+		if strings.Contains(condition, placeholder) {
+			placeholderFound = true
+		}
+	}
+
+	// Validate basic condition structure (must contain comparison operators)
+	validOperators := []string{"=", "!=", ">=", "<=", ">", "<", "IN", "NOT IN", "LIKE", "NOT LIKE"}
+	operatorFound := false
+	for _, operator := range validOperators {
+		if strings.Contains(upperCondition, operator) {
+			operatorFound = true
+			break
+		}
+	}
+
+	if !operatorFound && placeholderFound {
+		return fmt.Errorf("condition must contain a valid comparison operator")
+	}
+
+	// Check for balanced parentheses
+	openCount := strings.Count(condition, "(")
+	closeCount := strings.Count(condition, ")")
+	if openCount != closeCount {
+		return fmt.Errorf("unbalanced parentheses in condition")
+	}
+
+	// Check for reasonable length (prevent DoS)
+	if len(condition) > 1000 {
+		return fmt.Errorf("condition too long (max 1000 characters)")
 	}
 
 	return nil

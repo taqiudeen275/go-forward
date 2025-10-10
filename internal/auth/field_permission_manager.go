@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net"
 	"regexp"
 	"strings"
 )
@@ -438,16 +439,60 @@ func (f *FieldPermissionManagerImpl) isUserManageableField(fieldName string) boo
 // Condition evaluation helpers
 
 func (f *FieldPermissionManagerImpl) evaluateAdminLevelCondition(condition string, adminLevel AdminLevel) (bool, error) {
-	// Simple admin level comparison
-	if strings.Contains(condition, ">=") {
-		// Extract level from condition and compare
-		return true, nil // Simplified for now
+	// Admin level hierarchy: SystemAdmin(0) > SuperAdmin(1) > RegularAdmin(2) > Moderator(3)
+	adminLevelMap := map[AdminLevel]int{
+		SystemAdmin:  0,
+		SuperAdmin:   1,
+		RegularAdmin: 2,
+		Moderator:    3,
 	}
-	return true, nil
+
+	currentLevel, exists := adminLevelMap[adminLevel]
+	if !exists {
+		return false, fmt.Errorf("unknown admin level: %s", adminLevel)
+	}
+
+	// Parse condition like "admin_level >= SuperAdmin"
+	if strings.Contains(condition, ">=") {
+		parts := strings.Split(condition, ">=")
+		if len(parts) == 2 {
+			requiredLevelStr := strings.TrimSpace(parts[1])
+			requiredLevel, exists := adminLevelMap[AdminLevel(requiredLevelStr)]
+			if exists {
+				return currentLevel <= requiredLevel, nil // Lower number = higher privilege
+			}
+		}
+	} else if strings.Contains(condition, "=") {
+		parts := strings.Split(condition, "=")
+		if len(parts) == 2 {
+			requiredLevelStr := strings.TrimSpace(parts[1])
+			return string(adminLevel) == requiredLevelStr, nil
+		}
+	}
+
+	return false, fmt.Errorf("invalid admin level condition: %s", condition)
 }
 
 func (f *FieldPermissionManagerImpl) evaluateUserCondition(condition string, userID string) (bool, error) {
-	// User-specific conditions
+	// User-specific conditions like "user_id = 'specific_user'" or "user_id != ''"
+	if strings.Contains(condition, "!=") {
+		parts := strings.Split(condition, "!=")
+		if len(parts) == 2 {
+			compareValue := strings.Trim(strings.TrimSpace(parts[1]), "'\"")
+			return userID != compareValue, nil
+		}
+	} else if strings.Contains(condition, "=") {
+		parts := strings.Split(condition, "=")
+		if len(parts) == 2 {
+			compareValue := strings.Trim(strings.TrimSpace(parts[1]), "'\"")
+			if compareValue == "" {
+				return userID != "", nil
+			}
+			return userID == compareValue, nil
+		}
+	}
+
+	// Default: require authenticated user
 	return userID != "", nil
 }
 
@@ -460,15 +505,48 @@ func (f *FieldPermissionManagerImpl) evaluateMFACondition(condition string, mfaV
 }
 
 func (f *FieldPermissionManagerImpl) evaluateIPCondition(condition string, ipAddress string) (bool, error) {
-	// IP-based conditions (simplified)
+	// IP-based conditions like "ip_address IN ('192.168.1.0/24', '10.0.0.1')"
+	if strings.Contains(condition, "IN") {
+		// Extract IP list from condition
+		start := strings.Index(condition, "(")
+		end := strings.LastIndex(condition, ")")
+		if start != -1 && end != -1 && end > start {
+			ipListStr := condition[start+1 : end]
+			ipList := strings.Split(ipListStr, ",")
+
+			clientIP := net.ParseIP(ipAddress)
+			if clientIP == nil {
+				return false, fmt.Errorf("invalid IP address: %s", ipAddress)
+			}
+
+			for _, allowedIP := range ipList {
+				allowedIP = strings.Trim(strings.TrimSpace(allowedIP), "'\"")
+
+				// Check CIDR range
+				if strings.Contains(allowedIP, "/") {
+					_, ipNet, err := net.ParseCIDR(allowedIP)
+					if err == nil && ipNet.Contains(clientIP) {
+						return true, nil
+					}
+				} else {
+					// Check exact IP match
+					if allowedIPParsed := net.ParseIP(allowedIP); allowedIPParsed != nil {
+						if allowedIPParsed.Equal(clientIP) {
+							return true, nil
+						}
+					}
+				}
+			}
+			return false, nil
+		}
+	}
+
+	// Default: any valid IP is allowed
 	return ipAddress != "", nil
 }
 
 // hasFieldAccess checks if user roles have access to a specific field
 func (f *FieldPermissionManagerImpl) hasFieldAccess(fieldName string, userRoles []string, operation string) bool {
-	// This is a simplified implementation
-	// In a full implementation, you would have field-level role mappings
-
 	// Admin roles have access to all fields
 	for _, role := range userRoles {
 		if f.isAdminRole(role) {
@@ -476,9 +554,75 @@ func (f *FieldPermissionManagerImpl) hasFieldAccess(fieldName string, userRoles 
 		}
 	}
 
-	// For non-admin users, implement field-specific logic
-	// This could be extended to check field-specific role mappings
-	return true // Default allow for now
+	// Define field-specific role mappings
+	fieldRoleMap := map[string]map[string][]string{
+		"read": {
+			// Sensitive fields require admin access
+			"password_hash": {"System Admin", "Super Admin"},
+			"api_key":       {"System Admin", "Super Admin"},
+			"secret":        {"System Admin", "Super Admin"},
+			"private_key":   {"System Admin", "Super Admin"},
+
+			// PII fields require admin or specific roles
+			"email":   {"System Admin", "Super Admin", "Regular Admin", "User Manager"},
+			"phone":   {"System Admin", "Super Admin", "Regular Admin", "User Manager"},
+			"ssn":     {"System Admin", "Super Admin"},
+			"address": {"System Admin", "Super Admin", "Regular Admin"},
+
+			// Financial fields require specific access
+			"credit_card":  {"System Admin", "Super Admin", "Finance Manager"},
+			"bank_account": {"System Admin", "Super Admin", "Finance Manager"},
+		},
+		"write": {
+			// System fields are read-only for most users
+			"id":         {"System Admin"},
+			"created_at": {"System Admin"},
+			"updated_at": {"System Admin"},
+			"created_by": {"System Admin"},
+
+			// Security fields require high privileges
+			"password_hash": {"System Admin", "Super Admin"},
+			"api_key":       {"System Admin", "Super Admin"},
+			"secret":        {"System Admin", "Super Admin"},
+
+			// User management fields
+			"email":  {"System Admin", "Super Admin", "Regular Admin", "User Manager"},
+			"phone":  {"System Admin", "Super Admin", "Regular Admin", "User Manager"},
+			"status": {"System Admin", "Super Admin", "Regular Admin", "User Manager"},
+			"role":   {"System Admin", "Super Admin"},
+
+			// Profile fields - more permissive
+			"first_name":   {"System Admin", "Super Admin", "Regular Admin", "User Manager", "Content Manager"},
+			"last_name":    {"System Admin", "Super Admin", "Regular Admin", "User Manager", "Content Manager"},
+			"display_name": {"System Admin", "Super Admin", "Regular Admin", "User Manager", "Content Manager"},
+		},
+	}
+
+	// Check if field has specific role requirements
+	if operationMap, exists := fieldRoleMap[operation]; exists {
+		if requiredRoles, exists := operationMap[strings.ToLower(fieldName)]; exists {
+			for _, userRole := range userRoles {
+				for _, requiredRole := range requiredRoles {
+					if strings.EqualFold(userRole, requiredRole) {
+						return true
+					}
+				}
+			}
+			return false // Field requires specific roles but user doesn't have them
+		}
+	}
+
+	// For fields without specific restrictions, apply default logic
+	switch operation {
+	case "read":
+		// Most fields are readable by default unless they're sensitive
+		return !f.isAlwaysHiddenField(fieldName)
+	case "write":
+		// Write access is more restrictive - require at least some role
+		return len(userRoles) > 0 && !f.isReadOnlyField(fieldName)
+	default:
+		return false
+	}
 }
 
 // hasAdminRole checks if user has any admin role
