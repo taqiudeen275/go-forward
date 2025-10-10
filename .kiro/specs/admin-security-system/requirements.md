@@ -94,7 +94,7 @@ The system introduces a hierarchical admin structure similar to enterprise-grade
 
 ### Requirement 7: Admin Panel User Interface
 
-**User Story:** As an administrator, I want an intuitive web interface for managing the administrative system, so that I can perform administrative tasks efficiently without requiring technical expertise or CLI access.
+**User Story:** As an administrator, I want an intuitive web interface for managing the administrative system, so that I can perform administrative tasks efficiently without requiring technical expertise or CLI access. (use pnpm)
 
 #### Acceptance Criteria
 
