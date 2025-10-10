@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Card, Button, Input } from '$lib/components';
 	import { authActions, authState, isLoading, authError, isMFAPending } from '$lib/stores/auth';
-	import { goto } from '$app/navigation';
+	import { goto } from '$lib/utils/navigation';
 	import { onMount } from 'svelte';
 	
 	// Form state

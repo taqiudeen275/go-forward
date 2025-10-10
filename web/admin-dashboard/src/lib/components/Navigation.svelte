@@ -3,6 +3,7 @@
 	import { currentUser, authActions } from '$lib/stores/auth';
 	import { page } from '$app/stores';
 	import { writable } from 'svelte/store';
+	import { getPath, isCurrentPath } from '$lib/utils/navigation';
 	
 	// Navigation state
 	const mobileMenuOpen = writable(false);
@@ -56,10 +57,7 @@
 	}
 	
 	function isActiveRoute(href: string): boolean {
-		if (href === '/') {
-			return $page.url.pathname === '/';
-		}
-		return $page.url.pathname.startsWith(href);
+		return isCurrentPath(href, $page.url.pathname);
 	}
 </script>
 
@@ -96,7 +94,7 @@
 				<div class="hidden lg:ml-6 lg:flex lg:space-x-8">
 					{#each navigationItems as item}
 						<a
-							href={item.href}
+							href={getPath(item.href)}
 							class="inline-flex items-center px-1 pt-1 text-sm font-medium transition-colors
 								{isActiveRoute(item.href) 
 									? 'border-b-2 border-primary text-primary' 
@@ -185,7 +183,7 @@
 		<div class="pt-2 pb-3 space-y-1 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
 			{#each navigationItems as item}
 				<a
-					href={item.href}
+					href={getPath(item.href)}
 					onclick={closeMobileMenu}
 					class="block pl-3 pr-4 py-2 text-base font-medium transition-colors
 						{isActiveRoute(item.href)

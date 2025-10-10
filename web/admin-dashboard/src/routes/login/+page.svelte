@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Card, Button, Input } from '$lib/components';
 	import { authActions, authState, isLoading, authError } from '$lib/stores/auth';
-	import { goto } from '$app/navigation';
+	import { goto, getPath } from '$lib/utils/navigation';
 	import { onMount } from 'svelte';
 	
 	// Form state
@@ -143,7 +143,7 @@
 					</label>
 					
 					<a
-						href="/login/forgot-password"
+						href="{getPath('/login/forgot-password')}"
 						class="text-sm text-primary hover:text-primary-hover"
 					>
 						Forgot password?

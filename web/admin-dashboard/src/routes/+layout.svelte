@@ -14,8 +14,8 @@
 		}
 	});
 	
-	// Check if current route is a login route
-	const isLoginRoute = $derived($page.url.pathname.startsWith('/login'));
+	// Check if current route is a login route (accounting for base path)
+	const isLoginRoute = $derived($page.route.id?.startsWith('/login'));
 </script>
 
 <svelte:head>

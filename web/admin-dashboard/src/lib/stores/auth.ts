@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import type { AdminRole } from './theme';
 
@@ -61,7 +61,7 @@ export const isMFAPending = derived(authState, ($auth) => $auth.mfaPending);
 
 // Auth API functions
 class AuthAPI {
-	private baseURL = '/api/auth';
+	private baseURL = `${import.meta.env.BASE_URL || ''}api/auth`.replace(/\/+/g, '/').replace(/\/$/, '');
 
 	// Get CSRF token
 	async getCSRFToken(): Promise<string> {
@@ -200,7 +200,7 @@ export const authActions = {
 		authState.update(state => ({ ...state, loading: true, error: null }));
 
 		try {
-			const { csrfToken } = authState.get();
+			const { csrfToken } = get(authState);
 			if (!csrfToken) {
 				throw new Error('CSRF token not available');
 			}
@@ -235,7 +235,7 @@ export const authActions = {
 		authState.update(state => ({ ...state, loading: true, error: null }));
 
 		try {
-			const { csrfToken } = authState.get();
+			const { csrfToken } = get(authState);
 			if (!csrfToken) {
 				throw new Error('CSRF token not available');
 			}
@@ -262,7 +262,7 @@ export const authActions = {
 		authState.update(state => ({ ...state, loading: true }));
 
 		try {
-			const { csrfToken } = authState.get();
+			const { csrfToken } = get(authState);
 			if (csrfToken) {
 				await authAPI.logout(csrfToken);
 			}
@@ -294,7 +294,7 @@ export const authActions = {
 
 // Auto-refresh session before expiry
 if (browser) {
-	let refreshTimer: NodeJS.Timeout;
+	let refreshTimer: ReturnType<typeof setTimeout>;
 
 	authState.subscribe(($auth) => {
 		if (refreshTimer) {

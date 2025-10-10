@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto } from '$lib/utils/navigation';
 	import { page } from '$app/stores';
 	import { authActions, isAuthenticated, isLoading, currentUser } from '$lib/stores/auth';
 	import type { AdminRole } from '$lib/stores/theme';
@@ -16,8 +16,8 @@
 	// Public routes that don't require authentication
 	const publicRoutes = ['/login', '/login/mfa', '/login/forgot-password'];
 	
-	// Check if current route is public
-	const isPublicRoute = $derived(publicRoutes.some(route => $page.url.pathname.startsWith(route)));
+	// Check if current route is public (using route ID to avoid base path issues)
+	const isPublicRoute = $derived(publicRoutes.some(route => $page.route.id?.startsWith(route)));
 	
 	// Check if user has required role
 	const hasRequiredRole = $derived(() => {
