@@ -185,6 +185,8 @@ func (s *Server) registerServices() {
 	// Register dashboard service
 	if err := s.gateway.RegisterService(s.dashboardHandler); err != nil {
 		s.logger.Error("Failed to register dashboard service: %v", err)
+	} else {
+		s.logger.Info("Admin dashboard available at: http://%s:%d/_/", s.config.Server.Host, s.config.Server.Port)
 	}
 
 	s.logger.Info("All services registered successfully")

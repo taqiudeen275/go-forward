@@ -17,7 +17,7 @@ const config = {
 		}),
 		paths: {
 			// Configure base path for embedded serving
-			base: process.env.NODE_ENV === 'production' ? '/admin' : ''
+			base: process.env.NODE_ENV === 'production' ? '/_' : ''
 		},
 		prerender: {
 			handleHttpError: 'warn'

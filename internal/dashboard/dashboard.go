@@ -17,7 +17,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Enabled:  true,
-		BasePath: "/admin",
+		BasePath: "/_",
 		DevMode:  false,
 		DevURL:   "http://localhost:5173",
 	}

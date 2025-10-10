@@ -180,3 +180,15 @@ scripts/
 ```
 
 This implementation provides a solid foundation for the complete admin security system, with all the necessary infrastructure for secure, role-based administration.
+## U
+pdated Access URL
+
+The admin dashboard is now available at: **`http://localhost:8080/_/`**
+
+This follows the PocketBase convention of using `/_/` for admin endpoints, which helps separate admin functionality from regular API endpoints and avoids conflicts with user-defined routes.
+
+### Benefits of `/_/` Path:
+- **Clear separation**: Admin routes are clearly distinguished from API routes
+- **No conflicts**: Unlikely to conflict with user-defined application routes  
+- **PocketBase compatibility**: Follows established patterns from PocketBase
+- **Clean URLs**: Short and memorable admin access point

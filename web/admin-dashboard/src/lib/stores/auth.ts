@@ -61,7 +61,7 @@ export const isMFAPending = derived(authState, ($auth) => $auth.mfaPending);
 
 // Auth API functions
 class AuthAPI {
-	private baseURL = '/api/admin/auth';
+	private baseURL = '/api/auth';
 
 	// Get CSRF token
 	async getCSRFToken(): Promise<string> {

@@ -40,13 +40,13 @@ import (
 
 func main() {
     router := gin.Default()
-    
+
     // Basic setup
     config := dashboard.DefaultConfig()
     dashboard.Setup(router, config)
-    
+
     router.Run(":8080")
-    // Dashboard available at http://localhost:8080/admin
+    // Dashboard available at http://localhost:8080/_
 }
 ```
 
@@ -55,21 +55,21 @@ func main() {
 ```go
 func main() {
     router := gin.Default()
-    
+
     // Your authentication middleware
     authMiddleware := func(c *gin.Context) {
         // Check admin session, JWT token, etc.
         if !isValidAdminSession(c) {
-            c.Redirect(302, "/admin/login")
+            c.Redirect(302, "/_/login")
             c.Abort()
             return
         }
         c.Next()
     }
-    
+
     config := dashboard.DefaultConfig()
     dashboard.SetupWithAuth(router, config, authMiddleware)
-    
+
     router.Run(":8080")
 }
 ```
@@ -79,7 +79,7 @@ func main() {
 ```go
 type Config struct {
     Enabled    bool   // Enable/disable dashboard
-    BasePath   string // Base URL path (default: "/admin")
+    BasePath   string // Base URL path (default: "/_")
     DevMode    bool   // Development mode (proxy to dev server)
     DevURL     string // Development server URL
 }
@@ -114,6 +114,7 @@ pnpm run build:embedded
 ```
 
 This will:
+
 1. Build the SvelteKit app with production optimizations
 2. Copy assets to `internal/dashboard/embed/build/`
 3. Update the Go embed file

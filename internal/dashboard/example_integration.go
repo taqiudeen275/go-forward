@@ -25,7 +25,7 @@ func ExampleIntegration() {
 	// router.Run(":8080")
 
 	// Dashboard will be available at:
-	// http://localhost:8080/admin
+	// http://localhost:8080/_
 }
 
 // ExampleWithCustomConfig shows configuration options
