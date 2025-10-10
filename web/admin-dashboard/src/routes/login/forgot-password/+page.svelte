@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Card, Button, Input } from '$lib/components';
 	import { writable } from 'svelte/store';
+	import { getPath } from '$lib/utils/navigation';
 	
 	// Form state
 	let email = '';
@@ -111,7 +112,7 @@
 							variant="primary"
 							size="lg"
 							fullWidth
-							href="/login"
+							href={getPath('/login')}
 						>
 							Back to Login
 						</Button>
@@ -178,7 +179,7 @@
 						variant="ghost"
 						size="md"
 						fullWidth
-						href="/login"
+						href={getPath('/login')}
 						disabled={isLoading}
 					>
 						← Back to Login
