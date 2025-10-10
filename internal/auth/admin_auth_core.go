@@ -147,6 +147,14 @@ type APIKeyInfo struct {
 	Metadata   map[string]string `json:"metadata"`
 }
 
+// UserInfo represents user information from token validation
+type UserInfo struct {
+	UserID      string `json:"user_id"`
+	SessionID   string `json:"session_id"`
+	MFAVerified bool   `json:"mfa_verified"`
+	ExpiresAt   int64  `json:"expires_at"`
+}
+
 // AdminSession represents enhanced admin session management
 type AdminSession struct {
 	ID           string            `json:"id" db:"id"`
@@ -206,6 +214,9 @@ type AuthenticationCore interface {
 	InvalidateSession(ctx context.Context, sessionID string) error
 	RefreshSession(ctx context.Context, sessionID string) (*AdminSession, error)
 	GetActiveSessions(ctx context.Context, userID string) ([]*AdminSession, error)
+
+	// Token validation
+	ValidateToken(token string) (*UserInfo, error)
 
 	// API key management
 	CreateAPIKey(ctx context.Context, userID string, name string, scopes []string, expiresAt *time.Time) (*APIKey, error)
@@ -753,6 +764,25 @@ func (ac *AuthenticationCoreImpl) ClearSecurityFlags(ctx context.Context, userID
 	// This would clear flags in admin_sessions and security_events tables
 
 	return nil
+}
+
+// ValidateToken validates a JWT token and returns user information
+func (ac *AuthenticationCoreImpl) ValidateToken(token string) (*UserInfo, error) {
+	// Use JWT manager to validate token
+	claims, err := ac.jwtManager.ValidateAccessToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: %w", err)
+	}
+
+	// Extract user information from claims
+	userInfo := &UserInfo{
+		UserID:      claims.UserID,
+		SessionID:   "",    // SessionID would need to be added to Claims or retrieved separately
+		MFAVerified: false, // MFAVerified would need to be added to Claims or retrieved separately
+		ExpiresAt:   claims.ExpiresAt.Unix(),
+	}
+
+	return userInfo, nil
 }
 
 // getAdminLevelFromCapabilities determines admin level from capabilities
