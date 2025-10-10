@@ -303,15 +303,25 @@
   - Verify compliance report accuracy
   - _Requirements: 6.1, 6.2, 6.3_
 
-- [ ] 8. SvelteKit Admin Dashboard Foundation
+- [-] 8. SvelteKit Admin Dashboard Foundation
+
+
+
+
+
+
+
 
   - Set up embedded SvelteKit project with security-aware design
+  - Make sure the admin enpoints all start /_ to avoid collision which framework endpoint or routes (Eg: localhost:8080/_/,)
   - Implement responsive design system with role-based theming
   - Build secure authentication pages with cookie support
   - Create foundational components for admin interface
   - _Requirements: 7.1, 7.6, 8.1, 8.6_
 
-- [ ] 8.1 Set up SvelteKit project with embedded build
+- [x] 8.1 Set up SvelteKit project with embedded build
+
+
 
 
 
@@ -323,12 +333,19 @@
 
 
 
-- [ ] 8.2 Implement responsive design system with role-based theming
+
+
+- [x] 8.2 Implement responsive design system with role-based theming
+
+
+
 
   - Create responsive design system inspired by PocketBase and Supabase
   - Implement light and dark theme support with smooth transitions
   - Add mobile-responsive navigation with role-based menu items
   - Create appealing UI components with security-focused design patterns
+
+
 
 
   - _Requirements: 7.6, 7.1_
