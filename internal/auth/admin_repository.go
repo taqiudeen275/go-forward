@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/taqiudeen275/go-foward/internal/database"
@@ -572,4 +573,137 @@ func (r *AdminRepository) GetAdminRolesByLevel(ctx context.Context, level AdminL
 	}
 
 	return roles, nil
+}
+
+// AdminUserInfo represents an admin user with their role information
+type AdminUserInfo struct {
+	UserID     string     `json:"user_id"`
+	Email      *string    `json:"email"`
+	Username   *string    `json:"username"`
+	AdminLevel AdminLevel `json:"admin_level"`
+	RoleName   string     `json:"role_name"`
+	IsActive   bool       `json:"is_active"`
+	CreatedAt  time.Time  `json:"created_at"`
+	GrantedAt  time.Time  `json:"granted_at"`
+	GrantedBy  *string    `json:"granted_by"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+}
+
+// ListAdminUsers retrieves all users with admin roles
+func (r *AdminRepository) ListAdminUsers(ctx context.Context) ([]*AdminUserInfo, error) {
+	query := `
+		SELECT DISTINCT
+			u.id,
+			u.email,
+			u.username,
+			u.created_at,
+			ar.name as role_name,
+			ar.level,
+			uar.is_active,
+			uar.granted_at,
+			uar.granted_by,
+			uar.expires_at
+		FROM users u
+		JOIN user_admin_roles uar ON u.id = uar.user_id
+		JOIN admin_roles ar ON uar.role_id = ar.id
+		WHERE uar.is_active = true
+		ORDER BY ar.level ASC, u.created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query admin users: %w", err)
+	}
+	defer rows.Close()
+
+	var adminUsers []*AdminUserInfo
+	for rows.Next() {
+		var adminUser AdminUserInfo
+		var levelInt int
+
+		err := rows.Scan(
+			&adminUser.UserID,
+			&adminUser.Email,
+			&adminUser.Username,
+			&adminUser.CreatedAt,
+			&adminUser.RoleName,
+			&levelInt,
+			&adminUser.IsActive,
+			&adminUser.GrantedAt,
+			&adminUser.GrantedBy,
+			&adminUser.ExpiresAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan admin user row: %w", err)
+		}
+
+		adminUser.AdminLevel = r.levelToAdminLevel(levelInt)
+		adminUsers = append(adminUsers, &adminUser)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating admin user rows: %w", err)
+	}
+
+	return adminUsers, nil
+}
+
+// ListAdminUsersByLevel retrieves admin users filtered by admin level
+func (r *AdminRepository) ListAdminUsersByLevel(ctx context.Context, level AdminLevel) ([]*AdminUserInfo, error) {
+	query := `
+		SELECT DISTINCT
+			u.id,
+			u.email,
+			u.username,
+			u.created_at,
+			ar.name as role_name,
+			ar.level,
+			uar.is_active,
+			uar.granted_at,
+			uar.granted_by,
+			uar.expires_at
+		FROM users u
+		JOIN user_admin_roles uar ON u.id = uar.user_id
+		JOIN admin_roles ar ON uar.role_id = ar.id
+		WHERE uar.is_active = true AND ar.level = $1
+		ORDER BY u.created_at DESC
+	`
+
+	levelInt := r.adminLevelToInt(level)
+	rows, err := r.db.Query(ctx, query, levelInt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query admin users by level: %w", err)
+	}
+	defer rows.Close()
+
+	var adminUsers []*AdminUserInfo
+	for rows.Next() {
+		var adminUser AdminUserInfo
+		var levelInt int
+
+		err := rows.Scan(
+			&adminUser.UserID,
+			&adminUser.Email,
+			&adminUser.Username,
+			&adminUser.CreatedAt,
+			&adminUser.RoleName,
+			&levelInt,
+			&adminUser.IsActive,
+			&adminUser.GrantedAt,
+			&adminUser.GrantedBy,
+			&adminUser.ExpiresAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan admin user row: %w", err)
+		}
+
+		adminUser.AdminLevel = r.levelToAdminLevel(levelInt)
+		adminUsers = append(adminUsers, &adminUser)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating admin user rows: %w", err)
+	}
+
+	return adminUsers, nil
 }

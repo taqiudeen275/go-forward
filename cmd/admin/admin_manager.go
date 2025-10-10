@@ -496,18 +496,57 @@ func (am *AdminManager) listAdminsSimple(ctx context.Context, filter *AdminFilte
 		}
 	}
 
-	// Use the admin repository instead of direct database access
+	// Use the admin repository to get admin users
 	adminRepo := am.adminRepo
 	if adminRepo == nil {
 		return nil, fmt.Errorf("admin repository not available")
 	}
 
-	// For now, return a simplified implementation that works with the existing structure
-	// In a full implementation, this would use the admin repository's list method
-	var admins []*AdminListItem
+	var adminUsers []*auth.AdminUserInfo
+	var err error
 
-	// This is a simplified approach - in reality, you'd extend the AdminRepository
-	// to support listing with the required fields
+	// Get admin users based on filter
+	if filter != nil && filter.Level != nil {
+		adminUsers, err = adminRepo.ListAdminUsersByLevel(ctx, *filter.Level)
+	} else {
+		adminUsers, err = adminRepo.ListAdminUsers(ctx)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list admin users: %w", err)
+	}
+
+	// Convert to AdminListItem format
+	var admins []*AdminListItem
+	for _, adminUser := range adminUsers {
+		// Apply additional filters
+		if filter != nil && !filter.ShowInactive && !adminUser.IsActive {
+			continue
+		}
+
+		admin := &AdminListItem{
+			UserID:     adminUser.UserID,
+			AdminLevel: adminUser.AdminLevel,
+			IsActive:   adminUser.IsActive,
+			CreatedAt:  adminUser.CreatedAt,
+		}
+
+		admins = append(admins, admin)
+
+		// Apply limit
+		if filter != nil && filter.Limit > 0 && len(admins) >= filter.Limit {
+			break
+		}
+	}
+
+	// Apply offset
+	if filter != nil && filter.Offset > 0 {
+		if filter.Offset >= len(admins) {
+			return []*AdminListItem{}, nil
+		}
+		admins = admins[filter.Offset:]
+	}
+
 	return admins, nil
 }
 
