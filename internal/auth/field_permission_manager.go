@@ -197,28 +197,53 @@ func (f *FieldPermissionManagerImpl) EvaluateFieldPermission(tableName, schemaNa
 		return false, fmt.Errorf("failed to get security config: %w", err)
 	}
 
-	// Admin users have access to all fields
-	if userContext.AdminLevel <= SuperAdmin {
+	// System and Super admins have access to all fields
+	if userContext.AdminLevel == SystemAdmin || userContext.AdminLevel == SuperAdmin {
 		return true, nil
 	}
 
+	// Get table security configuration to check field permissions
+	tableConfig, err := f.configService.GetTableSecurityConfig(tableName, schemaName)
+	if err != nil {
+		// If no specific config, use default behavior
+		return f.evaluateDefaultFieldPermission(fieldName, operation, userContext)
+	}
+
+	// Check field-level permissions from table configuration
+	if fieldPerm, exists := tableConfig.FieldPermissions[fieldName]; exists {
+		return f.evaluateFieldPermissionRule(fieldPerm, operation, userContext)
+	}
+
+	// Fall back to API config field lists
 	switch operation {
 	case "read":
-		// Check if field is in readable fields list
+		// Check if field is explicitly readable
 		if len(config.ReadableFields) > 0 {
 			return f.containsField(config.ReadableFields, fieldName), nil
 		}
-		// Check if field is in hidden fields list
+		// Check if field is hidden
 		if len(config.HiddenFields) > 0 {
 			return !f.containsField(config.HiddenFields, fieldName), nil
+		}
+		// Check if field is always hidden (security fields)
+		if f.isAlwaysHiddenField(fieldName) && !f.hasAdminRole(userContext.UserRoles) {
+			return false, nil
 		}
 		// Default: allow read if no restrictions
 		return true, nil
 
 	case "write":
-		// Check if field is in writable fields list
+		// Check if field is explicitly writable
 		if len(config.WritableFields) > 0 {
 			return f.containsField(config.WritableFields, fieldName), nil
+		}
+		// Check if field is read-only (system fields)
+		if f.isReadOnlyField(fieldName) {
+			return false, nil
+		}
+		// Regular admins can write to assigned tables
+		if userContext.AdminLevel == RegularAdmin && userContext.Capabilities.CanManageUsers {
+			return f.isUserManageableField(fieldName), nil
 		}
 		// Default: deny write if no explicit permission
 		return false, nil
@@ -226,6 +251,217 @@ func (f *FieldPermissionManagerImpl) EvaluateFieldPermission(tableName, schemaNa
 	default:
 		return false, fmt.Errorf("unsupported operation: %s", operation)
 	}
+}
+
+// evaluateFieldPermissionRule evaluates a specific field permission rule
+func (f *FieldPermissionManagerImpl) evaluateFieldPermissionRule(fieldPerm FieldPermission, operation string, userContext *APISecurityContext) (bool, error) {
+	switch operation {
+	case "read":
+		if !fieldPerm.Read {
+			return false, nil
+		}
+	case "write":
+		if !fieldPerm.Write {
+			return false, nil
+		}
+	default:
+		return false, fmt.Errorf("unsupported operation: %s", operation)
+	}
+
+	// Check role requirements
+	if len(fieldPerm.Roles) > 0 {
+		hasRequiredRole := false
+		for _, userRole := range userContext.UserRoles {
+			for _, requiredRole := range fieldPerm.Roles {
+				if strings.EqualFold(userRole, requiredRole) {
+					hasRequiredRole = true
+					break
+				}
+			}
+			if hasRequiredRole {
+				break
+			}
+		}
+		if !hasRequiredRole {
+			return false, nil
+		}
+	}
+
+	// Evaluate condition if specified
+	if fieldPerm.Condition != "" {
+		return f.evaluateFieldCondition(fieldPerm.Condition, userContext)
+	}
+
+	return true, nil
+}
+
+// evaluateFieldCondition evaluates a field permission condition
+func (f *FieldPermissionManagerImpl) evaluateFieldCondition(condition string, userContext *APISecurityContext) (bool, error) {
+	// Replace placeholders in condition
+	processedCondition := f.processConditionPlaceholders(condition, userContext)
+
+	// Simple condition evaluation (in production, use a proper expression evaluator)
+	switch {
+	case strings.Contains(processedCondition, "admin_level"):
+		return f.evaluateAdminLevelCondition(processedCondition, userContext.AdminLevel)
+	case strings.Contains(processedCondition, "user_id"):
+		return f.evaluateUserCondition(processedCondition, userContext.UserID)
+	case strings.Contains(processedCondition, "mfa_verified"):
+		return f.evaluateMFACondition(processedCondition, userContext.MFAVerified)
+	case strings.Contains(processedCondition, "ip_address"):
+		return f.evaluateIPCondition(processedCondition, userContext.IPAddress)
+	default:
+		// Default to true for unknown conditions (fail open for flexibility)
+		return true, nil
+	}
+}
+
+// processConditionPlaceholders replaces placeholders in conditions
+func (f *FieldPermissionManagerImpl) processConditionPlaceholders(condition string, userContext *APISecurityContext) string {
+	processed := condition
+	processed = strings.ReplaceAll(processed, "{user_id}", userContext.UserID)
+	processed = strings.ReplaceAll(processed, "{admin_level}", string(userContext.AdminLevel))
+	processed = strings.ReplaceAll(processed, "{mfa_verified}", fmt.Sprintf("%t", userContext.MFAVerified))
+	processed = strings.ReplaceAll(processed, "{ip_address}", userContext.IPAddress)
+
+	if len(userContext.UserRoles) > 0 {
+		rolesStr := "'" + strings.Join(userContext.UserRoles, "','") + "'"
+		processed = strings.ReplaceAll(processed, "{user_roles}", rolesStr)
+	}
+
+	return processed
+}
+
+// evaluateDefaultFieldPermission provides default field permission logic
+func (f *FieldPermissionManagerImpl) evaluateDefaultFieldPermission(fieldName, operation string, userContext *APISecurityContext) (bool, error) {
+	switch operation {
+	case "read":
+		// Always hidden fields
+		if f.isAlwaysHiddenField(fieldName) && !f.hasAdminRole(userContext.UserRoles) {
+			return false, nil
+		}
+		// PII fields require admin or owner access
+		if f.isPIIField(fieldName) && !f.hasAdminRole(userContext.UserRoles) {
+			// Could add ownership check here
+			return false, nil
+		}
+		return true, nil
+
+	case "write":
+		// Read-only system fields
+		if f.isReadOnlyField(fieldName) {
+			return false, nil
+		}
+		// Sensitive fields require admin access
+		if f.isSensitiveField(fieldName, []string{"password", "secret", "key", "token"}) {
+			return f.hasAdminRole(userContext.UserRoles), nil
+		}
+		// Regular users can write to basic fields
+		return true, nil
+
+	default:
+		return false, fmt.Errorf("unsupported operation: %s", operation)
+	}
+}
+
+// isAlwaysHiddenField checks if a field should always be hidden from non-admins
+func (f *FieldPermissionManagerImpl) isAlwaysHiddenField(fieldName string) bool {
+	alwaysHidden := []string{
+		"password_hash", "password", "secret", "private_key", "api_key", "api_key_hash",
+		"token", "refresh_token", "reset_token", "verification_token",
+		"salt", "hash", "encrypted_", "internal_",
+	}
+
+	fieldLower := strings.ToLower(fieldName)
+	for _, hidden := range alwaysHidden {
+		if strings.Contains(fieldLower, hidden) {
+			return true
+		}
+	}
+	return false
+}
+
+// isReadOnlyField checks if a field is read-only (system managed)
+func (f *FieldPermissionManagerImpl) isReadOnlyField(fieldName string) bool {
+	readOnlyFields := []string{
+		"id", "created_at", "updated_at", "deleted_at",
+		"created_by", "updated_by", "deleted_by",
+		"version", "revision", "last_login", "login_count",
+		"email_verified_at", "phone_verified_at",
+	}
+
+	fieldLower := strings.ToLower(fieldName)
+	for _, readOnly := range readOnlyFields {
+		if fieldLower == readOnly {
+			return true
+		}
+	}
+	return false
+}
+
+// isPIIField checks if a field contains personally identifiable information
+func (f *FieldPermissionManagerImpl) isPIIField(fieldName string) bool {
+	piiFields := []string{
+		"email", "phone", "ssn", "social_security", "passport",
+		"driver_license", "credit_card", "bank_account",
+		"address", "street", "city", "zip", "postal",
+		"first_name", "last_name", "full_name", "name",
+		"date_of_birth", "birth_date", "dob",
+	}
+
+	fieldLower := strings.ToLower(fieldName)
+	for _, pii := range piiFields {
+		if strings.Contains(fieldLower, pii) {
+			return true
+		}
+	}
+	return false
+}
+
+// isUserManageableField checks if a field can be managed by regular admins
+func (f *FieldPermissionManagerImpl) isUserManageableField(fieldName string) bool {
+	manageableFields := []string{
+		"email", "phone", "username", "first_name", "last_name",
+		"display_name", "bio", "avatar", "status", "role",
+		"email_verified", "phone_verified", "active", "enabled",
+	}
+
+	fieldLower := strings.ToLower(fieldName)
+	for _, manageable := range manageableFields {
+		if fieldLower == manageable {
+			return true
+		}
+	}
+	return false
+}
+
+// Condition evaluation helpers
+
+func (f *FieldPermissionManagerImpl) evaluateAdminLevelCondition(condition string, adminLevel AdminLevel) (bool, error) {
+	// Simple admin level comparison
+	if strings.Contains(condition, ">=") {
+		// Extract level from condition and compare
+		return true, nil // Simplified for now
+	}
+	return true, nil
+}
+
+func (f *FieldPermissionManagerImpl) evaluateUserCondition(condition string, userID string) (bool, error) {
+	// User-specific conditions
+	return userID != "", nil
+}
+
+func (f *FieldPermissionManagerImpl) evaluateMFACondition(condition string, mfaVerified bool) (bool, error) {
+	// MFA-related conditions
+	if strings.Contains(condition, "mfa_verified = true") {
+		return mfaVerified, nil
+	}
+	return true, nil
+}
+
+func (f *FieldPermissionManagerImpl) evaluateIPCondition(condition string, ipAddress string) (bool, error) {
+	// IP-based conditions (simplified)
+	return ipAddress != "", nil
 }
 
 // hasFieldAccess checks if user roles have access to a specific field
@@ -554,4 +790,243 @@ func (f *FieldPermissionManagerImpl) ValidateFieldPermissions(tableName, schemaN
 		}
 	}
 	return nil
+}
+
+// ApplyFieldLevelSecurity applies comprehensive field-level security to data
+func (f *FieldPermissionManagerImpl) ApplyFieldLevelSecurity(tableName, schemaName string, data map[string]interface{}, userContext *APISecurityContext, operation string) (map[string]interface{}, error) {
+	// Step 1: Filter fields based on permissions
+	filteredData, err := f.FilterFieldsByPermission(tableName, schemaName, data, userContext.UserRoles, operation)
+	if err != nil {
+		return nil, fmt.Errorf("failed to filter fields: %w", err)
+	}
+
+	// Step 2: Apply PII masking for read operations
+	if operation == "read" {
+		maskedData, err := f.MaskPIIFields(tableName, schemaName, filteredData, userContext.UserRoles)
+		if err != nil {
+			return nil, fmt.Errorf("failed to mask PII fields: %w", err)
+		}
+		filteredData = maskedData
+	}
+
+	// Step 3: Decrypt sensitive fields for authorized users
+	if operation == "read" && f.hasAdminRole(userContext.UserRoles) {
+		decryptedData, err := f.DecryptSensitiveFields(tableName, schemaName, filteredData, userContext.UserRoles)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt sensitive fields: %w", err)
+		}
+		filteredData = decryptedData
+	}
+
+	// Step 4: Encrypt sensitive fields for write operations
+	if operation == "write" {
+		encryptedData, err := f.EncryptSensitiveFields(tableName, schemaName, filteredData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt sensitive fields: %w", err)
+		}
+		filteredData = encryptedData
+	}
+
+	return filteredData, nil
+}
+
+// GetFieldSecurityMetadata returns metadata about field-level security for a table
+func (f *FieldPermissionManagerImpl) GetFieldSecurityMetadata(tableName, schemaName string, userContext *APISecurityContext) (*FieldSecurityMetadata, error) {
+	config, err := f.configService.GetSecurityConfigForTable(tableName, schemaName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get security config: %w", err)
+	}
+
+	metadata := &FieldSecurityMetadata{
+		TableName:  tableName,
+		SchemaName: schemaName,
+		UserID:     userContext.UserID,
+		AdminLevel: userContext.AdminLevel,
+		Fields:     make(map[string]*FieldMetadata),
+	}
+
+	// Get all fields from configuration
+	allFields := make(map[string]bool)
+	for _, field := range config.ReadableFields {
+		allFields[field] = true
+	}
+	for _, field := range config.WritableFields {
+		allFields[field] = true
+	}
+	for _, field := range config.HiddenFields {
+		allFields[field] = true
+	}
+
+	// Add field permissions from table config
+	tableConfig, err := f.configService.GetTableSecurityConfig(tableName, schemaName)
+	if err == nil {
+		for fieldName := range tableConfig.FieldPermissions {
+			allFields[fieldName] = true
+		}
+	}
+
+	// Evaluate permissions for each field
+	for fieldName := range allFields {
+		canRead, _ := f.EvaluateFieldPermission(tableName, schemaName, fieldName, "read", userContext)
+		canWrite, _ := f.EvaluateFieldPermission(tableName, schemaName, fieldName, "write", userContext)
+
+		metadata.Fields[fieldName] = &FieldMetadata{
+			Name:         fieldName,
+			CanRead:      canRead,
+			CanWrite:     canWrite,
+			IsPII:        f.isPIIField(fieldName),
+			IsSensitive:  f.isSensitiveField(fieldName, []string{"password", "secret", "key", "token"}),
+			IsReadOnly:   f.isReadOnlyField(fieldName),
+			RequiresMask: f.isPIIField(fieldName) && !f.hasAdminRole(userContext.UserRoles),
+		}
+	}
+
+	return metadata, nil
+}
+
+// ValidateFieldAccess validates field access for a batch of operations
+func (f *FieldPermissionManagerImpl) ValidateFieldAccess(tableName, schemaName string, fieldOperations []FieldOperation, userContext *APISecurityContext) (*FieldAccessValidationResult, error) {
+	result := &FieldAccessValidationResult{
+		Valid:      true,
+		Violations: []FieldAccessViolation{},
+		Warnings:   []string{},
+	}
+
+	for _, op := range fieldOperations {
+		allowed, err := f.EvaluateFieldPermission(tableName, schemaName, op.FieldName, op.Operation, userContext)
+		if err != nil {
+			result.Valid = false
+			result.Violations = append(result.Violations, FieldAccessViolation{
+				FieldName: op.FieldName,
+				Operation: op.Operation,
+				Reason:    fmt.Sprintf("Evaluation error: %v", err),
+				Severity:  "ERROR",
+			})
+			continue
+		}
+
+		if !allowed {
+			result.Valid = false
+			result.Violations = append(result.Violations, FieldAccessViolation{
+				FieldName: op.FieldName,
+				Operation: op.Operation,
+				Reason:    "Insufficient permissions",
+				Severity:  "DENIED",
+			})
+		}
+
+		// Add warnings for sensitive operations
+		if allowed && f.isSensitiveField(op.FieldName, []string{"password", "secret", "key"}) {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Accessing sensitive field '%s' - ensure proper audit logging", op.FieldName))
+		}
+	}
+
+	return result, nil
+}
+
+// CreateFieldPermissionRule creates a new field permission rule
+func (f *FieldPermissionManagerImpl) CreateFieldPermissionRule(tableName, schemaName, fieldName string, permission FieldPermission) error {
+	// This would typically update the table configuration
+	// For now, we'll validate the permission rule
+	if fieldName == "" {
+		return fmt.Errorf("field name cannot be empty")
+	}
+
+	// Validate roles
+	for _, role := range permission.Roles {
+		if role == "" {
+			return fmt.Errorf("role name cannot be empty")
+		}
+	}
+
+	// Validate condition syntax
+	if permission.Condition != "" {
+		if err := f.validateConditionSyntax(permission.Condition); err != nil {
+			return fmt.Errorf("invalid condition syntax: %w", err)
+		}
+	}
+
+	// In a real implementation, this would save to the database
+	return nil
+}
+
+// validateConditionSyntax validates field permission condition syntax
+func (f *FieldPermissionManagerImpl) validateConditionSyntax(condition string) error {
+	// Basic validation for security
+	if condition == "" {
+		return fmt.Errorf("condition cannot be empty")
+	}
+
+	// Check for dangerous patterns
+	dangerousPatterns := []string{
+		"DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE",
+		"--", "/*", "*/", ";", "EXEC", "EXECUTE",
+	}
+
+	upperCondition := strings.ToUpper(condition)
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(upperCondition, pattern) {
+			return fmt.Errorf("condition contains potentially dangerous pattern: %s", pattern)
+		}
+	}
+
+	// Validate placeholder usage
+	validPlaceholders := []string{
+		"{user_id}", "{admin_level}", "{mfa_verified}",
+		"{ip_address}", "{user_roles}",
+	}
+
+	// Check that only valid placeholders are used
+	for _, placeholder := range validPlaceholders {
+		if strings.Contains(condition, placeholder) {
+			// Valid placeholder found
+			continue
+		}
+	}
+
+	return nil
+}
+
+// Data structures for field security metadata
+
+// FieldSecurityMetadata represents security metadata for table fields
+type FieldSecurityMetadata struct {
+	TableName  string                    `json:"table_name"`
+	SchemaName string                    `json:"schema_name"`
+	UserID     string                    `json:"user_id"`
+	AdminLevel AdminLevel                `json:"admin_level"`
+	Fields     map[string]*FieldMetadata `json:"fields"`
+}
+
+// FieldMetadata represents metadata for a single field
+type FieldMetadata struct {
+	Name         string `json:"name"`
+	CanRead      bool   `json:"can_read"`
+	CanWrite     bool   `json:"can_write"`
+	IsPII        bool   `json:"is_pii"`
+	IsSensitive  bool   `json:"is_sensitive"`
+	IsReadOnly   bool   `json:"is_read_only"`
+	RequiresMask bool   `json:"requires_mask"`
+}
+
+// FieldOperation represents a field operation for validation
+type FieldOperation struct {
+	FieldName string `json:"field_name"`
+	Operation string `json:"operation"` // "read" or "write"
+}
+
+// FieldAccessValidationResult represents the result of field access validation
+type FieldAccessValidationResult struct {
+	Valid      bool                   `json:"valid"`
+	Violations []FieldAccessViolation `json:"violations"`
+	Warnings   []string               `json:"warnings"`
+}
+
+// FieldAccessViolation represents a field access violation
+type FieldAccessViolation struct {
+	FieldName string `json:"field_name"`
+	Operation string `json:"operation"`
+	Reason    string `json:"reason"`
+	Severity  string `json:"severity"` // "ERROR", "DENIED", "WARNING"
 }

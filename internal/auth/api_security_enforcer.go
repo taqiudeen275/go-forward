@@ -265,18 +265,58 @@ func (e *APISecurityEnforcerImpl) ValidateOwnership(tableName, schemaName string
 	}
 
 	// Check if user has admin privileges that bypass ownership
-	if userContext.AdminLevel <= SuperAdmin {
+	if userContext.AdminLevel == SystemAdmin || userContext.AdminLevel == SuperAdmin {
 		return nil // System and Super admins bypass ownership
 	}
 
-	// This would typically query the database to check ownership
-	// For now, we'll return a placeholder implementation
-	// In a real implementation, you would:
-	// 1. Query the table to get the ownership column value for the resource
-	// 2. Compare it with the current user ID
-	// 3. Return error if not owned by the user
+	// For regular admins, check if they have CanManageAllTables capability
+	if userContext.Capabilities.CanManageAllTables {
+		return nil // Can manage all tables
+	}
 
-	return fmt.Errorf("ownership validation not implemented - would check %s column for resource %s", config.OwnershipColumn, resourceID)
+	// Check if the table is in the user's assigned tables
+	if len(userContext.Capabilities.AssignedTables) > 0 {
+		tableKey := fmt.Sprintf("%s.%s", schemaName, tableName)
+		for _, assignedTable := range userContext.Capabilities.AssignedTables {
+			if assignedTable == tableKey || assignedTable == tableName {
+				return nil // User has access to this table
+			}
+		}
+	}
+
+	// If we reach here, we need to validate actual ownership
+	// This would require a database query to check the ownership column
+	// For now, we'll create a validation context that can be used by the query layer
+	return &OwnershipValidationError{
+		TableName:       tableName,
+		SchemaName:      schemaName,
+		ResourceID:      resourceID,
+		OwnershipColumn: config.OwnershipColumn,
+		UserID:          userContext.UserID,
+		Message:         fmt.Sprintf("ownership validation required for %s.%s", schemaName, tableName),
+	}
+}
+
+// OwnershipValidationError represents an ownership validation requirement
+type OwnershipValidationError struct {
+	TableName       string `json:"table_name"`
+	SchemaName      string `json:"schema_name"`
+	ResourceID      string `json:"resource_id"`
+	OwnershipColumn string `json:"ownership_column"`
+	UserID          string `json:"user_id"`
+	Message         string `json:"message"`
+}
+
+func (e *OwnershipValidationError) Error() string {
+	return e.Message
+}
+
+// IsOwnershipValidationError checks if an error is an ownership validation error
+func IsOwnershipValidationError(err error) (*OwnershipValidationError, bool) {
+	if ove, ok := err.(*OwnershipValidationError); ok {
+		return ove, true
+	}
+	return nil, false
 }
 
 // ApplyCustomFilters applies custom SQL filters to a query
@@ -286,34 +326,121 @@ func (e *APISecurityEnforcerImpl) ApplyCustomFilters(tableName, schemaName strin
 		return query, fmt.Errorf("failed to get security config: %w", err)
 	}
 
-	if len(config.CustomFilters) == 0 {
-		return query, nil
-	}
-
 	modifiedQuery := *query
-
-	// Store custom filters in metadata for now
-	// In a real implementation, you would modify the SQL query directly
 	if modifiedQuery.Metadata == nil {
 		modifiedQuery.Metadata = make(map[string]string)
+	}
+
+	var whereConditions []string
+
+	// Apply ownership filter if required
+	if config.RequireOwnership && config.OwnershipColumn != "" && userContext.UserID != "" {
+		// Skip ownership filter for system and super admins
+		if userContext.AdminLevel != SystemAdmin && userContext.AdminLevel != SuperAdmin {
+			// Check if user can manage all tables
+			if !userContext.Capabilities.CanManageAllTables {
+				// Apply ownership filter
+				ownershipCondition := fmt.Sprintf("%s = '%s'", config.OwnershipColumn, userContext.UserID)
+				whereConditions = append(whereConditions, ownershipCondition)
+				modifiedQuery.Metadata["ownership_filter"] = ownershipCondition
+			}
+		}
 	}
 
 	// Apply custom filters based on user context
 	for filterName, filterExpression := range config.CustomFilters {
 		// Replace placeholders in filter expression
 		processedFilter := e.processFilterExpression(filterExpression, userContext)
-		modifiedQuery.Metadata["filter_"+filterName] = processedFilter
-	}
-
-	// Apply ownership filter if required
-	if config.RequireOwnership && config.OwnershipColumn != "" && userContext.UserID != "" {
-		// Skip ownership filter for admins
-		if userContext.AdminLevel > SuperAdmin {
-			modifiedQuery.Metadata["ownership_filter"] = fmt.Sprintf("%s = '%s'", config.OwnershipColumn, userContext.UserID)
+		if processedFilter != "" {
+			whereConditions = append(whereConditions, processedFilter)
+			modifiedQuery.Metadata["filter_"+filterName] = processedFilter
 		}
 	}
 
+	// Apply role-based filters for regular admins
+	if userContext.AdminLevel == RegularAdmin {
+		roleFilters := e.buildRoleBasedFilters(tableName, schemaName, userContext)
+		whereConditions = append(whereConditions, roleFilters...)
+	}
+
+	// Inject WHERE conditions into the query
+	if len(whereConditions) > 0 {
+		modifiedQuery.Query = e.injectWhereConditions(modifiedQuery.Query, whereConditions)
+		modifiedQuery.Metadata["applied_filters"] = strings.Join(whereConditions, " AND ")
+	}
+
 	return &modifiedQuery, nil
+}
+
+// buildRoleBasedFilters builds filters based on user roles and assigned resources
+func (e *APISecurityEnforcerImpl) buildRoleBasedFilters(tableName, schemaName string, userContext *APISecurityContext) []string {
+	var filters []string
+
+	// If user has assigned tables, only show data from those tables
+	if len(userContext.Capabilities.AssignedTables) > 0 {
+		tableKey := fmt.Sprintf("%s.%s", schemaName, tableName)
+		hasAccess := false
+		for _, assignedTable := range userContext.Capabilities.AssignedTables {
+			if assignedTable == tableKey || assignedTable == tableName {
+				hasAccess = true
+				break
+			}
+		}
+
+		// If table is not assigned, add impossible condition
+		if !hasAccess {
+			filters = append(filters, "1 = 0") // Always false condition
+		}
+	}
+
+	// If user has assigned user groups, filter by those groups
+	if len(userContext.Capabilities.AssignedUserGroups) > 0 {
+		// This assumes there's a user_group or group_id column
+		groupConditions := make([]string, len(userContext.Capabilities.AssignedUserGroups))
+		for i, group := range userContext.Capabilities.AssignedUserGroups {
+			groupConditions[i] = fmt.Sprintf("user_group = '%s'", group)
+		}
+		if len(groupConditions) > 0 {
+			filters = append(filters, fmt.Sprintf("(%s)", strings.Join(groupConditions, " OR ")))
+		}
+	}
+
+	// Add status filter for content moderation
+	if userContext.Capabilities.CanModerateContent {
+		// Show only non-deleted content for moderators
+		filters = append(filters, "status != 'deleted'")
+	}
+
+	return filters
+}
+
+// injectWhereConditions injects WHERE conditions into a SQL query
+func (e *APISecurityEnforcerImpl) injectWhereConditions(query string, conditions []string) string {
+	if len(conditions) == 0 {
+		return query
+	}
+
+	combinedCondition := strings.Join(conditions, " AND ")
+	upperQuery := strings.ToUpper(query)
+
+	// Check if query already has WHERE clause
+	if strings.Contains(upperQuery, " WHERE ") {
+		// Add to existing WHERE clause
+		return strings.Replace(query, " WHERE ", fmt.Sprintf(" WHERE (%s) AND ", combinedCondition), 1)
+	} else {
+		// Add new WHERE clause
+		// Find appropriate insertion point (before ORDER BY, GROUP BY, HAVING, LIMIT)
+		insertionPoint := len(query)
+
+		keywords := []string{" ORDER BY ", " GROUP BY ", " HAVING ", " LIMIT ", " OFFSET "}
+		for _, keyword := range keywords {
+			if idx := strings.Index(upperQuery, keyword); idx != -1 && idx < insertionPoint {
+				insertionPoint = idx
+			}
+		}
+
+		return query[:insertionPoint] + fmt.Sprintf(" WHERE (%s)", combinedCondition) + query[insertionPoint:]
+	}
 }
 
 // CheckRateLimit checks if the request is within rate limits

@@ -123,7 +123,13 @@ func (s *TableSecurityService) UpdateTableSecurityConfig(id string, req *UpdateT
 		return nil, fmt.Errorf("configuration validation failed: %v", validation.Errors)
 	}
 
-	// Note: Version management not implemented in this simplified version
+	// Create version if requested or if significant changes detected
+	if req.CreateVersion || s.hasSignificantChanges(existingConfig, &updatedConfig) {
+		err = s.repo.CreateConfigurationVersion(id, existingConfig, req.ChangeReason, updatedBy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create configuration version: %w", err)
+		}
+	}
 
 	// Update configuration
 	err = s.repo.UpdateTableSecurityConfig(id, &updatedConfig, updatedBy)
