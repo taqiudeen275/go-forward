@@ -479,7 +479,7 @@ func (am *alertManager) queryAlerts(filter AlertFilter) ([]SecurityAlert, error)
 	if len(filter.Types) > 0 {
 		placeholders := make([]string, len(filter.Types))
 		for i, alertType := range filter.Types {
-			placeholders[i] = fmt.Sprintf("?")
+			placeholders[i] = "?"
 			args = append(args, alertType)
 		}
 		query += fmt.Sprintf(" AND type IN (%s)", strings.Join(placeholders, ","))
@@ -488,7 +488,7 @@ func (am *alertManager) queryAlerts(filter AlertFilter) ([]SecurityAlert, error)
 	if len(filter.Severities) > 0 {
 		placeholders := make([]string, len(filter.Severities))
 		for i, severity := range filter.Severities {
-			placeholders[i] = fmt.Sprintf("?")
+			placeholders[i] = "?"
 			args = append(args, severity)
 		}
 		query += fmt.Sprintf(" AND severity IN (%s)", strings.Join(placeholders, ","))
@@ -497,7 +497,7 @@ func (am *alertManager) queryAlerts(filter AlertFilter) ([]SecurityAlert, error)
 	if len(filter.Statuses) > 0 {
 		placeholders := make([]string, len(filter.Statuses))
 		for i, status := range filter.Statuses {
-			placeholders[i] = fmt.Sprintf("?")
+			placeholders[i] = "?"
 			args = append(args, status)
 		}
 		query += fmt.Sprintf(" AND status IN (%s)", strings.Join(placeholders, ","))
@@ -825,7 +825,7 @@ func (am *alertManager) processNotificationTask(task NotificationTask) {
 		Title:    task.Alert.Title,
 		Message:  task.Alert.Description,
 		Channel:  task.ChannelID,
-		Priority: string(task.Priority),
+		Priority: task.Priority.String(),
 	}
 
 	// Send notification

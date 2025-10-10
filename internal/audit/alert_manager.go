@@ -248,6 +248,22 @@ const (
 	PriorityCritical NotificationPriority = 4
 )
 
+// String returns the string representation of NotificationPriority
+func (np NotificationPriority) String() string {
+	switch np {
+	case PriorityLow:
+		return "LOW"
+	case PriorityMedium:
+		return "MEDIUM"
+	case PriorityHigh:
+		return "HIGH"
+	case PriorityCritical:
+		return "CRITICAL"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // EscalationTask represents an escalation task
 type EscalationTask struct {
 	AlertID     string           `json:"alert_id"`
