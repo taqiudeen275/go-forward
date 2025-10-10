@@ -15,9 +15,12 @@ const config = {
 			precompress: false,
 			strict: true
 		}),
+		alias: {
+      "@/*": "./path/to/lib/*",
+    },
 		paths: {
 			// Configure base path for embedded serving
-			base: process.env.NODE_ENV === 'production' ? '/_' : ''
+			base: process.env.NODE_ENV === 'production' ? '/_' : '/_'
 		},
 		prerender: {
 			handleHttpError: 'warn'

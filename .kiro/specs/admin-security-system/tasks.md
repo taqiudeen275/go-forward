@@ -303,12 +303,7 @@
   - Verify compliance report accuracy
   - _Requirements: 6.1, 6.2, 6.3_
 
-- [x] 8. SvelteKit Admin Dashboard Foundation
-
-
-
-
-
+- [ ] 8. SvelteKit Admin Dashboard Foundation
 
   - Set up embedded SvelteKit project with security-aware design
   - Implement responsive design system with role-based theming
@@ -316,7 +311,7 @@
   - Create foundational components for admin interface
   - _Requirements: 7.1, 7.6, 8.1, 8.6_
 
-- [x] 8.1 Set up SvelteKit project with embedded build
+- [ ] 8.1 Set up SvelteKit project with embedded build
 
 
 
