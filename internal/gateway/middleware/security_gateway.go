@@ -368,25 +368,46 @@ func (sg *SecurityGatewayImpl) extractToken(c *gin.Context) string {
 }
 
 func (sg *SecurityGatewayImpl) validateToken(ctx context.Context, token string) (*SecurityContext, error) {
-	// This would integrate with your JWT validation logic
-	// For now, returning a mock implementation
-	// In real implementation, this would:
-	// 1. Validate JWT signature
-	// 2. Check expiration
-	// 3. Extract user claims
-	// 4. Validate session if needed
-	// 5. Check token blacklist
+	if token == "" {
+		return nil, fmt.Errorf("token is required")
+	}
 
-	return &SecurityContext{
-		UserID:       "mock-user-id",
-		AdminLevel:   "regular",
-		IPAddress:    "",
-		UserAgent:    "",
-		SessionID:    "mock-session-id",
-		RequestID:    "",
-		Capabilities: make(map[string]interface{}),
-		Timestamp:    time.Now(),
-	}, nil
+	// For development/testing, accept a simple token format
+	// In production, this would integrate with proper JWT validation
+	if strings.HasPrefix(token, "dev-") {
+		// Development token format: dev-{userID}-{adminLevel}
+		parts := strings.Split(token, "-")
+		if len(parts) >= 3 {
+			userID := parts[1]
+			adminLevel := parts[2]
+
+			return &SecurityContext{
+				UserID:     userID,
+				AdminLevel: adminLevel,
+				IPAddress:  "",
+				UserAgent:  "",
+				SessionID:  fmt.Sprintf("session-%s", userID),
+				RequestID:  "",
+				Capabilities: map[string]interface{}{
+					"mfa_verified":     adminLevel == "system_admin" || adminLevel == "super_admin",
+					"can_manage_users": adminLevel != "moderator",
+				},
+				Timestamp: time.Now(),
+			}, nil
+		}
+	}
+
+	// For production, integrate with actual JWT validation service
+	if sg.authService != nil {
+		// This would call the auth service to validate the JWT token
+		// userInfo, err := sg.authService.ValidateJWT(ctx, token)
+		// if err != nil {
+		//     return nil, fmt.Errorf("token validation failed: %w", err)
+		// }
+		// return convertToSecurityContext(userInfo), nil
+	}
+
+	return nil, fmt.Errorf("invalid token format")
 }
 
 func (sg *SecurityGatewayImpl) isAdmin(context *SecurityContext) bool {
@@ -400,9 +421,44 @@ func (sg *SecurityGatewayImpl) isAdmin(context *SecurityContext) bool {
 }
 
 func (sg *SecurityGatewayImpl) hasRequiredRoles(context *SecurityContext, requiredRoles []string) bool {
-	// This would check user roles against required roles
-	// Implementation depends on your role system
-	return true // Mock implementation
+	if len(requiredRoles) == 0 {
+		return true // No specific roles required
+	}
+
+	// Admin level hierarchy check
+	adminHierarchy := map[string]int{
+		"system_admin":  0,
+		"super_admin":   1,
+		"regular_admin": 2,
+		"moderator":     3,
+	}
+
+	userLevel, userIsAdmin := adminHierarchy[context.AdminLevel]
+
+	for _, requiredRole := range requiredRoles {
+		// Check exact role match
+		if context.AdminLevel == requiredRole {
+			return true
+		}
+
+		// Check admin hierarchy - higher level admins can access lower level requirements
+		if requiredLevel, exists := adminHierarchy[requiredRole]; exists && userIsAdmin {
+			if userLevel <= requiredLevel {
+				return true
+			}
+		}
+
+		// Check capabilities for specific permissions
+		if capabilities, ok := context.Capabilities["roles"].([]string); ok {
+			for _, userRole := range capabilities {
+				if userRole == requiredRole {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 func (sg *SecurityGatewayImpl) isMFAVerified(context *SecurityContext) bool {

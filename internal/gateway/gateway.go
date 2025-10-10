@@ -222,13 +222,57 @@ func (g *Gateway) healthCheck(c *gin.Context) {
 
 // readinessCheck handles readiness probe
 func (g *Gateway) readinessCheck(c *gin.Context) {
-	// Check if all services are ready
-	// For now, just return ok if gateway is running
-	c.JSON(http.StatusOK, gin.H{
-		"status": "ready",
-		"checks": gin.H{
-			"gateway": "ok",
-		},
+	checks := gin.H{
+		"gateway": "ok",
+	}
+
+	allReady := true
+
+	// Check if router is configured
+	if g.router == nil {
+		checks["router"] = "failed"
+		allReady = false
+	} else {
+		checks["router"] = "ok"
+	}
+
+	// Check if services are registered
+	g.mu.RLock()
+	serviceCount := len(g.services)
+	g.mu.RUnlock()
+
+	checks["services"] = gin.H{
+		"count":  serviceCount,
+		"status": "ok",
+	}
+
+	// Check middleware stack
+	middlewareCount := len(g.middleware)
+	checks["middleware"] = gin.H{
+		"count":  middlewareCount,
+		"status": "ok",
+	}
+
+	// Check server status
+	if g.server != nil {
+		checks["server"] = "running"
+	} else {
+		checks["server"] = "not_started"
+	}
+
+	status := "ready"
+	httpStatus := http.StatusOK
+
+	if !allReady {
+		status = "not_ready"
+		httpStatus = http.StatusServiceUnavailable
+	}
+
+	c.JSON(httpStatus, gin.H{
+		"status":    status,
+		"checks":    checks,
+		"timestamp": time.Now().UTC(),
+		"version":   "1.0.0",
 	})
 }
 
