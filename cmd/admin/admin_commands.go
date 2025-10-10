@@ -217,7 +217,7 @@ Valid promotion levels:
 			// Production environment confirmation for system admin promotion
 			if adminLevel == auth.SystemAdmin && env == EnvironmentProduction && !force {
 				fmt.Printf("\n  CRITICAL WARNING: Promoting to SYSTEM ADMIN in PRODUCTION\n")
-				fmt.Printf("User: %s (%s)\n", user.Email, user.Username)
+				fmt.Printf("User: %s (%s)\n", getStringValue(user.Email), getStringValue(user.Username))
 				fmt.Printf("Current Level: %s\n", currentLevel)
 				fmt.Printf("New Level: %s\n", adminLevel)
 				fmt.Printf("\nSystem admins have unrestricted access to all framework functions.\n\n")
@@ -260,7 +260,7 @@ Valid promotion levels:
 
 			fmt.Printf("✓ User promoted successfully\n")
 			fmt.Printf("  User: %s (%s)\n", *user.Email, *user.Username)
-			fmt.Printf("  Previous Level: %s\n", result.PreviousLevel)
+			fmt.Printf("  Previous Level: %s\n", string(*result.PreviousLevel))
 			fmt.Printf("  New Level: %s\n", result.NewLevel)
 			fmt.Printf("  Promoted At: %s\n", result.PromotedAt.Format("2006-01-02 15:04:05"))
 
@@ -376,7 +376,7 @@ Use 'user' as the to-level to completely remove admin privileges.`,
 
 			fmt.Printf("✓ Admin demoted successfully\n")
 			fmt.Printf("  User: %s (%s)\n", *user.Email, *user.Username)
-			fmt.Printf("  Previous Level: %s\n", result.PreviousLevel)
+			fmt.Printf("  Previous Level: %s\n", string(result.PreviousLevel))
 			if result.NewLevel != nil {
 				fmt.Printf("  New Level: %s\n", *result.NewLevel)
 			} else {

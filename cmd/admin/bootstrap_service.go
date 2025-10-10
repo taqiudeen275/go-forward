@@ -117,11 +117,30 @@ func (bs *BootstrapService) IsFrameworkInitialized(ctx context.Context) (bool, e
 	// Check if there are any system administrators
 	// This is a simple check - in a real implementation, you might have a dedicated initialization table
 
-	// For now, we'll check if there are any users with system admin roles
-	// This would require querying the admin_roles table
+	// Query for existing system admin roles
+	query := `
+		SELECT COUNT(*) 
+		FROM admin_roles ar
+		JOIN users u ON ar.user_id = u.id
+		WHERE ar.role_name = 'System Admin' 
+		AND ar.is_active = true
+		AND u.email_verified = true
+	`
 
-	// Placeholder implementation
-	return false, nil
+	var count int
+	err := bs.db.QueryRow(ctx, query).Scan(&count)
+	if err != nil {
+		// If the table doesn't exist yet, framework is not initialized
+		if strings.Contains(err.Error(), "no such table") ||
+			strings.Contains(err.Error(), "relation") ||
+			strings.Contains(err.Error(), "doesn't exist") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check system admin existence: %w", err)
+	}
+
+	// Framework is initialized if there's at least one active system admin
+	return count > 0, nil
 }
 
 // InitializeFramework initializes the framework for first-time deployment
@@ -817,21 +836,48 @@ func (bs *BootstrapService) fixSecuritySettings() bool {
 
 // assignTemporaryAdminRole assigns an admin role with expiration
 func (bs *BootstrapService) assignTemporaryAdminRole(ctx context.Context, userID, roleID string, duration time.Duration, grantedBy string) error {
-	// For now, we'll use the regular role assignment
-	// In a full implementation, this would extend the user_admin_roles table to support expires_at
+	// First, assign the role normally
 	adminRepo := auth.NewAdminRepository(bs.db)
-
-	// Assign the role normally
 	err := adminRepo.AssignAdminRole(ctx, userID, roleID, grantedBy)
 	if err != nil {
 		return err
 	}
 
-	// TODO: In a full implementation, we would update the expires_at field
-	// For now, we'll log that this is a temporary assignment
-	fmt.Printf("Note: Temporary admin role assigned for %v (manual cleanup required)\n", duration)
+	// Update the role assignment with expiration time
+	expiresAt := time.Now().Add(duration)
+	updateQuery := `
+		UPDATE user_admin_roles 
+		SET expires_at = $1, updated_at = $2
+		WHERE user_id = $3 AND role_id = $4 AND is_active = true
+	`
+
+	err = bs.db.Exec(ctx, updateQuery, expiresAt, time.Now(), userID, roleID)
+	if err != nil {
+		// If the expires_at column doesn't exist, create a scheduled cleanup task
+		if strings.Contains(err.Error(), "no such column") || strings.Contains(err.Error(), "column") {
+			fmt.Printf("Warning: expires_at column not found. Creating cleanup reminder.\n")
+			fmt.Printf("Note: Temporary admin role assigned for %v - manual cleanup required at %v\n",
+				duration, expiresAt.Format("2006-01-02 15:04:05"))
+
+			// Log the expiration for manual cleanup
+			bs.logTemporaryRoleAssignment(ctx, userID, roleID, expiresAt, grantedBy)
+			return nil
+		}
+		return fmt.Errorf("failed to set role expiration: %w", err)
+	}
+
+	fmt.Printf("Temporary admin role assigned for %v (expires at %v)\n",
+		duration, expiresAt.Format("2006-01-02 15:04:05"))
 
 	return nil
+}
+
+// logTemporaryRoleAssignment logs temporary role assignments for manual cleanup
+func (bs *BootstrapService) logTemporaryRoleAssignment(ctx context.Context, userID, roleID string, expiresAt time.Time, grantedBy string) {
+	// Log to security events for tracking
+	description := fmt.Sprintf("Temporary admin role assignment - expires at %v", expiresAt.Format("2006-01-02 15:04:05"))
+	bs.logSecurityEvent(ctx, "TEMPORARY_ROLE_ASSIGNMENT", "INFO", "ADMIN_MANAGEMENT",
+		"Temporary Role Assignment", &userID, &roleID, description, time.Until(expiresAt))
 }
 
 // logSecurityEvent logs a security event to the security_events table
