@@ -98,6 +98,42 @@ func (mm *MigrationManager) Initialize(ctx context.Context) error {
 	return nil
 }
 
+// InitializeQuiet creates the migration tracking table without logging
+func (mm *MigrationManager) InitializeQuiet(ctx context.Context) error {
+	query := `
+		CREATE TABLE IF NOT EXISTS migrations (
+			id VARCHAR(255) PRIMARY KEY,
+			version VARCHAR(50) NOT NULL,
+			name VARCHAR(255) NOT NULL,
+			description TEXT,
+			up_sql TEXT NOT NULL,
+			down_sql TEXT,
+			created_by VARCHAR(255),
+			created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+			applied_at TIMESTAMP WITH TIME ZONE,
+			applied_by VARCHAR(255),
+			rolled_back_at TIMESTAMP WITH TIME ZONE,
+			rolled_back_by VARCHAR(255),
+			execution_time INTERVAL,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			error_message TEXT,
+			checksum VARCHAR(64) NOT NULL,
+			dependencies TEXT[]
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_migrations_version ON migrations(version);
+		CREATE INDEX IF NOT EXISTS idx_migrations_status ON migrations(status);
+		CREATE INDEX IF NOT EXISTS idx_migrations_applied_at ON migrations(applied_at);
+	`
+
+	_, err := mm.db.ExecuteExec(ctx, query)
+	if err != nil {
+		return errors.NewDatabaseError(fmt.Sprintf("Failed to initialize migration table: %v", err))
+	}
+
+	return nil
+}
+
 // LoadMigrationsFromDirectory loads migrations from the migrations directory
 func (mm *MigrationManager) LoadMigrationsFromDirectory(ctx context.Context, dir string) ([]*Migration, error) {
 	var migrations []*Migration
@@ -214,6 +250,54 @@ func (mm *MigrationManager) GetMigrationStatus(ctx context.Context) ([]*Migratio
 	}
 
 	return migrations, nil
+}
+
+// GetComprehensiveMigrationStatus returns status of all migrations (filesystem + database)
+func (mm *MigrationManager) GetComprehensiveMigrationStatus(ctx context.Context) ([]*Migration, int, int, error) {
+	// Load all migrations from filesystem
+	fileMigrations, err := mm.LoadMigrationsFromDirectory(ctx, "migrations")
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	// Get applied migrations from database
+	dbMigrations, err := mm.GetMigrationStatus(ctx)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	// Create map of database migrations for quick lookup
+	dbMap := make(map[string]*Migration)
+	for _, m := range dbMigrations {
+		dbMap[m.ID] = m
+	}
+
+	// Merge filesystem and database information
+	var allMigrations []*Migration
+	appliedCount := 0
+	pendingCount := 0
+
+	for _, fileMigration := range fileMigrations {
+		if dbMigration, exists := dbMap[fileMigration.ID]; exists {
+			// Migration exists in database, use database info
+			allMigrations = append(allMigrations, dbMigration)
+			if dbMigration.Status == MigrationStatusApplied {
+				appliedCount++
+			}
+		} else {
+			// Migration exists in filesystem but not in database (pending)
+			fileMigration.Status = MigrationStatusPending
+			allMigrations = append(allMigrations, fileMigration)
+			pendingCount++
+		}
+	}
+
+	// Sort by version
+	sort.Slice(allMigrations, func(i, j int) bool {
+		return allMigrations[i].Version < allMigrations[j].Version
+	})
+
+	return allMigrations, appliedCount, pendingCount, nil
 }
 
 // ApplyMigration applies a single migration
@@ -391,4 +475,100 @@ func (mm *MigrationManager) CreateMigration(name, description string) (*Migratio
 
 	mm.logger.Info("Migration files created", "up", upPath, "down", downPath)
 	return migration, nil
+}
+
+// CreateMigrationQuiet creates a new migration file without logging
+func (mm *MigrationManager) CreateMigrationQuiet(name, description string) (*Migration, error) {
+	// Generate version (timestamp)
+	version := strconv.FormatInt(time.Now().Unix(), 10)
+
+	// Clean name
+	cleanName := strings.ReplaceAll(strings.ToLower(name), " ", "_")
+
+	migration := &Migration{
+		ID:          fmt.Sprintf("%s_%s", version, cleanName),
+		Version:     version,
+		Name:        name,
+		Description: description,
+		CreatedAt:   time.Now().UTC(),
+		Status:      MigrationStatusPending,
+	}
+
+	// Create migration files
+	upPath := fmt.Sprintf("migrations/%s_%s.up.sql", version, cleanName)
+	downPath := fmt.Sprintf("migrations/%s_%s.down.sql", version, cleanName)
+
+	// Create up migration file
+	upContent := fmt.Sprintf(`-- Migration: %s
+-- Description: %s
+-- Created: %s
+
+-- Add your up migration SQL here
+
+`, name, description, time.Now().Format(time.RFC3339))
+
+	if err := os.WriteFile(upPath, []byte(upContent), 0644); err != nil {
+		return nil, errors.NewDatabaseError(fmt.Sprintf("Failed to create up migration file: %v", err))
+	}
+
+	// Create down migration file
+	downContent := fmt.Sprintf(`-- Rollback Migration: %s
+-- Description: %s
+-- Created: %s
+
+-- Add your down migration SQL here
+
+`, name, description, time.Now().Format(time.RFC3339))
+
+	if err := os.WriteFile(downPath, []byte(downContent), 0644); err != nil {
+		return nil, errors.NewDatabaseError(fmt.Sprintf("Failed to create down migration file: %v", err))
+	}
+
+	return migration, nil
+}
+
+// ApplyPendingMigrationsWithProgress applies all pending migrations with progress display
+func (mm *MigrationManager) ApplyPendingMigrationsWithProgress(ctx context.Context, appliedBy string) error {
+	// Load migrations from directory
+	migrations, err := mm.LoadMigrationsFromDirectory(ctx, "migrations")
+	if err != nil {
+		return err
+	}
+
+	// Get current migration status
+	appliedMigrations, err := mm.GetMigrationStatus(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create map of applied migrations
+	appliedMap := make(map[string]bool)
+	for _, m := range appliedMigrations {
+		if m.Status == MigrationStatusApplied {
+			appliedMap[m.ID] = true
+		}
+	}
+
+	// Apply pending migrations with progress
+	pendingMigrations := []*Migration{}
+	for _, migration := range migrations {
+		if !appliedMap[migration.ID] {
+			pendingMigrations = append(pendingMigrations, migration)
+		}
+	}
+
+	for i, migration := range pendingMigrations {
+		fmt.Printf("⏳ [%d/%d] Applying %s - %s", i+1, len(pendingMigrations), migration.Version, migration.Name)
+
+		start := time.Now()
+		if err := mm.ApplyMigration(ctx, migration, appliedBy); err != nil {
+			fmt.Printf("\r❌ [%d/%d] Failed %s - %s\n", i+1, len(pendingMigrations), migration.Version, migration.Name)
+			return err
+		}
+
+		duration := time.Since(start)
+		fmt.Printf("\r✅ [%d/%d] Applied %s - %s (%s)\n", i+1, len(pendingMigrations), migration.Version, migration.Name, duration.String())
+	}
+
+	return nil
 }
