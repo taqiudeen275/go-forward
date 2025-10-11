@@ -143,7 +143,10 @@
   - Add rate limiting and security monitoring for OTP requests
   - _Requirements: 1.1, 1.2, 15.2, 15.8_
 
-- [-] 2.7 Create CLI admin management commands
+- [x] 2.7 Create CLI admin management commands
+
+
+
 
 
   - Implement CLI commands for system admin creation and management

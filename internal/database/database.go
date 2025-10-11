@@ -2,11 +2,13 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/redis/go-redis/v9"
 	"github.com/taqiudeen275/go-foward/internal/config"
 	"github.com/taqiudeen275/go-foward/pkg/errors"
@@ -297,4 +299,23 @@ func (db *Database) IncrementRateLimit(ctx context.Context, key string, window t
 		return 0, err
 	}
 	return incr.Val(), nil
+}
+
+// Connect creates a standard database/sql connection for CLI usage
+func Connect(connectionString string) (*sql.DB, error) {
+	// Parse the connection string to get pgx config
+	config, err := pgx.ParseConfig(connectionString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse connection string: %v", err)
+	}
+
+	// Create a standard database/sql connection using pgx driver
+	db := stdlib.OpenDB(*config)
+
+	// Test the connection
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %v", err)
+	}
+
+	return db, nil
 }
