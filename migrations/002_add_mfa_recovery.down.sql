@@ -10,7 +10,7 @@ DROP TYPE IF EXISTS mfa_recovery_method;
 
 -- Restore the original clean_expired_records function
 CREATE OR REPLACE FUNCTION clean_expired_records()
-RETURNS void AS $
+RETURNS void AS $$
 BEGIN
     -- Clean expired OTP codes
     DELETE FROM otp_codes WHERE expires_at < NOW();
@@ -25,4 +25,4 @@ BEGIN
     DELETE FROM audit_logs 
     WHERE created_at < NOW() - INTERVAL '90 days';
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;

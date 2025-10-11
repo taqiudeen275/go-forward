@@ -44,7 +44,7 @@ CREATE POLICY mfa_recovery_admin ON mfa_recovery
 
 -- Update the clean_expired_records function to include MFA recovery
 CREATE OR REPLACE FUNCTION clean_expired_records()
-RETURNS void AS $
+RETURNS void AS $$
 BEGIN
     -- Clean expired OTP codes
     DELETE FROM otp_codes WHERE expires_at < NOW();
@@ -62,4 +62,4 @@ BEGIN
     DELETE FROM audit_logs 
     WHERE created_at < NOW() - INTERVAL '90 days';
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
