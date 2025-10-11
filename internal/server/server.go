@@ -12,6 +12,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/taqiudeen275/go-foward/internal/config"
+	"github.com/taqiudeen275/go-foward/internal/database"
+	"github.com/taqiudeen275/go-foward/pkg/errors"
+	"github.com/taqiudeen275/go-foward/pkg/logger"
+	"github.com/taqiudeen275/go-foward/pkg/middleware"
 )
 
 // Start initializes and starts the HTTP server
@@ -97,17 +101,37 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 
 	router := gin.New()
 
-	// Add basic middleware
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
+	// Add comprehensive middleware stack
+	router.Use(middleware.RequestIDMiddleware())
+	router.Use(middleware.SecurityHeadersMiddleware())
+	router.Use(middleware.ErrorHandlingMiddleware())
+	router.Use(middleware.LoggingMiddleware())
+	router.Use(middleware.PerformanceMiddleware())
+	router.Use(middleware.AuditMiddleware())
+	router.Use(middleware.ErrorMiddleware())
 
-	// Health check endpoint
+	// Initialize database connection for health checks
+	db, err := database.New(cfg)
+	if err != nil {
+		log.Printf("Warning: Database connection failed: %v", err)
+	}
+
+	// Health check endpoint with database status
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "healthy",
-			"timestamp": time.Now().UTC(),
-			"version":   "1.0.0",
-		})
+		health := gin.H{
+			"status":      "healthy",
+			"timestamp":   time.Now().UTC(),
+			"version":     "1.0.0",
+			"environment": cfg.Environment,
+		}
+
+		if db != nil {
+			health["database"] = db.Health(c.Request.Context())
+		} else {
+			health["database"] = gin.H{"status": "unavailable"}
+		}
+
+		c.JSON(http.StatusOK, health)
 	})
 
 	// API routes (will be expanded in later tasks)
@@ -115,10 +139,25 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 	{
 		api.GET("/", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
-				"message": "Unified Go Forward Framework API",
-				"version": "1.0.0",
+				"message":     "Unified Go Forward Framework API",
+				"version":     "1.0.0",
+				"environment": cfg.Environment,
 			})
 		})
+
+		// Error testing endpoints (development only)
+		if cfg.IsDevelopment() {
+			api.GET("/test-error", func(c *gin.Context) {
+				err := errors.NewAuthError("Test authentication error").
+					WithDetails("test", true).
+					WithRequestID(middleware.GetRequestID(c))
+				middleware.AbortWithError(c, err)
+			})
+
+			api.GET("/test-panic", func(c *gin.Context) {
+				panic("Test panic for error handling")
+			})
+		}
 	}
 
 	// Admin dashboard routes (configurable prefix)
@@ -129,6 +168,7 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 				"message": "Admin Dashboard",
 				"note":    "Dashboard will be embedded in later tasks",
 				"prefix":  cfg.Admin.DashboardPrefix,
+				"version": "1.0.0",
 			})
 		})
 
@@ -142,6 +182,22 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 		admin.GET("/config/validate", func(c *gin.Context) {
 			result := config.ValidateConfig(cfg)
 			c.JSON(http.StatusOK, result)
+		})
+
+		// System health endpoint
+		admin.GET("/health", func(c *gin.Context) {
+			health := gin.H{
+				"server": gin.H{
+					"status": "healthy",
+					"uptime": time.Since(time.Now()).String(), // This would be actual uptime in production
+				},
+			}
+
+			if db != nil {
+				health["database"] = db.Health(c.Request.Context())
+			}
+
+			c.JSON(http.StatusOK, health)
 		})
 	}
 
