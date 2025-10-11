@@ -481,12 +481,13 @@ func promoteUser(userIdentifier, level, reason string, tables []string) error {
 	// Get system admin for promotion (CLI operations are performed by system admin)
 	systemAdmins, err := cliCtx.AdminService.ListAdmins(ctx, &auth.AdminManagementFilter{
 		AdminLevel: &[]auth.AdminLevel{auth.AdminLevelSystemAdmin}[0],
-		Limit:      1,
+		Limit:      10, // Get multiple system admins
 	})
 	if err != nil || len(systemAdmins) == 0 {
 		return fmt.Errorf("no system admin found to perform promotion")
 	}
 
+	// Use the first available system admin for promotion
 	promoterAdmin := systemAdmins[0]
 
 	// Validate that the promoter can perform this promotion
@@ -572,16 +573,29 @@ func demoteAdmin(adminIdentifier, newLevel, reason string) error {
 		return fmt.Errorf("failed to find admin: %v", err)
 	}
 
-	// Get system admin for demotion
+	// Get system admin for demotion (try to find a different one if demoting self)
 	systemAdmins, err := cliCtx.AdminService.ListAdmins(ctx, &auth.AdminManagementFilter{
 		AdminLevel: &[]auth.AdminLevel{auth.AdminLevelSystemAdmin}[0],
-		Limit:      1,
+		Limit:      10, // Get multiple to avoid self-demotion issues
 	})
 	if err != nil || len(systemAdmins) == 0 {
 		return fmt.Errorf("no system admin found to perform demotion")
 	}
 
-	demotingAdmin := systemAdmins[0]
+	// Try to find a different system admin to avoid self-demotion
+	var demotingAdmin *auth.UnifiedUser
+	for _, sysAdmin := range systemAdmins {
+		if sysAdmin.ID != admin.ID {
+			demotingAdmin = sysAdmin
+			break
+		}
+	}
+
+	// If no different system admin found, use the first one (CLI override)
+	if demotingAdmin == nil {
+		demotingAdmin = systemAdmins[0]
+		fmt.Printf("⚠️  Warning: Using same admin for demotion (CLI override)\n")
+	}
 
 	// Validate that the demoting admin can manage the target admin
 	if !demotingAdmin.CanManageUser(admin) {
