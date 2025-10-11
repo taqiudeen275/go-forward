@@ -118,7 +118,10 @@
   - Create MFA recovery procedures
   - _Requirements: 8.7, 8.8, 8.10_
 
-- [ ] 2.5 Create customizable template system
+- [-] 2.5 Create customizable template system
+
+
+
 
   - Design template system for email and SMS communications
   - Implement template storage with versioning and language support

@@ -24,6 +24,12 @@ const (
 	ErrInvalidConfig ErrorCode = "INVALID_CONFIG"
 	ErrMissingConfig ErrorCode = "MISSING_CONFIG"
 
+	// Validation errors
+	ErrValidation ErrorCode = "VALIDATION_ERROR"
+
+	// External service errors
+	ErrExternalService ErrorCode = "EXTERNAL_SERVICE_ERROR"
+
 	// Server errors
 	ErrInternalServer     ErrorCode = "INTERNAL_SERVER_ERROR"
 	ErrServiceUnavailable ErrorCode = "SERVICE_UNAVAILABLE"
@@ -43,11 +49,13 @@ const (
 type ErrorCategory string
 
 const (
-	CategoryAuth     ErrorCategory = "authentication"
-	CategoryDB       ErrorCategory = "database"
-	CategoryConfig   ErrorCategory = "configuration"
-	CategorySecurity ErrorCategory = "security"
-	CategoryServer   ErrorCategory = "server"
+	CategoryAuth       ErrorCategory = "authentication"
+	CategoryDB         ErrorCategory = "database"
+	CategoryConfig     ErrorCategory = "configuration"
+	CategorySecurity   ErrorCategory = "security"
+	CategoryServer     ErrorCategory = "server"
+	CategoryValidation ErrorCategory = "validation"
+	CategoryExternal   ErrorCategory = "external"
 )
 
 // UnifiedError represents all types of framework errors
@@ -174,6 +182,32 @@ func NewSecurityError(message string) *UnifiedError {
 		ShouldSendAlert()
 }
 
+func NewValidationError(message string) *UnifiedError {
+	return New(ErrValidation, message).
+		WithCategory(CategoryValidation).
+		WithSeverity(SeverityLow)
+}
+
+func NewExternalServiceError(message string) *UnifiedError {
+	return New(ErrExternalService, message).
+		WithCategory(CategoryExternal).
+		WithSeverity(SeverityMedium).
+		CanRetry()
+}
+
+func NewAuthenticationError(message string) *UnifiedError {
+	return New(ErrUnauthorized, message).
+		WithCategory(CategoryAuth).
+		WithSeverity(SeverityMedium).
+		ShouldAuditLog()
+}
+
+func NewNotFoundError(message string) *UnifiedError {
+	return New(ErrRecordNotFound, message).
+		WithCategory(CategoryDB).
+		WithSeverity(SeverityLow)
+}
+
 // Wrap wraps an error with additional context
 func Wrap(err error, message string) error {
 	if err == nil {
@@ -229,6 +263,30 @@ func IsDuplicate(err error) bool {
 func IsAuthError(err error) bool {
 	if ue, ok := err.(*UnifiedError); ok {
 		return ue.Category == CategoryAuth
+	}
+	return false
+}
+
+// IsValidationError checks if an error is a validation error
+func IsValidationError(err error) bool {
+	if ue, ok := err.(*UnifiedError); ok {
+		return ue.Code == ErrValidation
+	}
+	return false
+}
+
+// IsExternalServiceError checks if an error is an external service error
+func IsExternalServiceError(err error) bool {
+	if ue, ok := err.(*UnifiedError); ok {
+		return ue.Code == ErrExternalService
+	}
+	return false
+}
+
+// IsNotFoundError checks if an error is a not found error
+func IsNotFoundError(err error) bool {
+	if ue, ok := err.(*UnifiedError); ok {
+		return ue.Code == ErrRecordNotFound
 	}
 	return false
 }
