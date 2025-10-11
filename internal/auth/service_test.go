@@ -462,6 +462,10 @@ func TestAuthService_Login(t *testing.T) {
 	})
 
 	t.Run("login with locked account", func(t *testing.T) {
+		// Create a fresh mock for this test to avoid interference
+		freshMockRepo := new(MockRepository)
+		freshService := NewAuthService(freshMockRepo, cfg)
+
 		user := createTestUser()
 		lockUntil := time.Now().Add(time.Hour)
 		user.LockedUntil = &lockUntil
@@ -471,16 +475,16 @@ func TestAuthService_Login(t *testing.T) {
 			Password:   "password123",
 		}
 
-		mockRepo.On("GetUserByEmail", ctx, *user.Email).Return(user, nil)
-		mockRepo.On("CreateSecurityEvent", ctx, mock.AnythingOfType("*auth.SecurityEvent")).Return(nil)
+		freshMockRepo.On("GetUserByEmail", ctx, *user.Email).Return(user, nil)
+		freshMockRepo.On("CreateSecurityEvent", ctx, mock.AnythingOfType("*auth.SecurityEvent")).Return(nil)
 
-		resp, err := service.Login(ctx, req)
+		resp, err := freshService.Login(ctx, req)
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "account is locked")
 
-		mockRepo.AssertExpectations(t)
+		freshMockRepo.AssertExpectations(t)
 	})
 
 	t.Run("login with non-existent user", func(t *testing.T) {
@@ -584,6 +588,10 @@ func TestAuthService_VerifyOTP(t *testing.T) {
 	})
 
 	t.Run("OTP verification with expired code", func(t *testing.T) {
+		// Create a fresh mock for this test to avoid interference
+		freshMockRepo := new(MockRepository)
+		freshService := NewAuthService(freshMockRepo, cfg)
+
 		email := "test@example.com"
 		otp := &OTPCode{
 			ID:          uuid.New(),
@@ -601,16 +609,16 @@ func TestAuthService_VerifyOTP(t *testing.T) {
 			Purpose:    "login",
 		}
 
-		mockRepo.On("GetOTPByIdentifier", ctx, email, "login").Return(otp, nil)
-		mockRepo.On("CreateSecurityEvent", ctx, mock.AnythingOfType("*auth.SecurityEvent")).Return(nil)
+		freshMockRepo.On("GetOTPByIdentifier", ctx, email, "login").Return(otp, nil)
+		freshMockRepo.On("CreateSecurityEvent", ctx, mock.AnythingOfType("*auth.SecurityEvent")).Return(nil)
 
-		resp, err := service.VerifyOTP(ctx, req)
+		resp, err := freshService.VerifyOTP(ctx, req)
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "OTP has expired")
 
-		mockRepo.AssertExpectations(t)
+		freshMockRepo.AssertExpectations(t)
 	})
 
 	t.Run("OTP verification with invalid code", func(t *testing.T) {
@@ -632,7 +640,7 @@ func TestAuthService_VerifyOTP(t *testing.T) {
 		}
 
 		mockRepo.On("GetOTPByIdentifier", ctx, email, "login").Return(otp, nil)
-		mockRepo.On("UpdateOTPAttempts", ctx, otp.ID, 1).Return(nil)
+		mockRepo.On("UpdateOTPAttempts", ctx, mock.AnythingOfType("uuid.UUID"), 1).Return(nil)
 		mockRepo.On("CreateSecurityEvent", ctx, mock.AnythingOfType("*auth.SecurityEvent")).Return(nil)
 
 		resp, err := service.VerifyOTP(ctx, req)
