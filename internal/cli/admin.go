@@ -147,15 +147,15 @@ func promoteUserCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "promote [user-id-or-email]",
-		Short: "Promote user to admin",
-		Long:  "Promote an existing user to admin level",
+		Short: "Promote user to admin or upgrade admin level",
+		Long:  "Promote a non-admin user to admin level or upgrade an existing admin to a higher level",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return promoteUser(args[0], level, reason, tables)
 		},
 	}
 
-	cmd.Flags().StringVarP(&level, "level", "l", "regular_admin", "Admin level (super_admin, regular_admin, moderator)")
+	cmd.Flags().StringVarP(&level, "level", "l", "regular_admin", "Admin level (system_admin, super_admin, regular_admin, moderator)")
 	cmd.Flags().StringVarP(&reason, "reason", "r", "", "Reason for promotion")
 	cmd.Flags().StringSliceVarP(&tables, "tables", "t", []string{}, "Assigned tables for regular admin")
 
@@ -302,20 +302,18 @@ func createSystemAdmin(email, username, password string, force bool) error {
 			return fmt.Errorf("system admin creation cancelled")
 		}
 
-		// Promote existing user
-		req := &auth.PromoteUserRequest{
-			UserID:     existingUser.ID,
-			AdminLevel: auth.AdminLevelSystemAdmin,
-			PromotedBy: existingUser.ID, // Self-promotion for CLI
-			Reason:     "CLI system admin creation",
-		}
+		// Directly promote existing user to system admin
+		existingUser.AdminLevel = &[]auth.AdminLevel{auth.AdminLevelSystemAdmin}[0]
+		capabilities := auth.GetDefaultCapabilities(auth.AdminLevelSystemAdmin)
+		existingUser.Capabilities = &capabilities
+		existingUser.UpdatedBy = &existingUser.ID
+		existingUser.UpdatedAt = time.Now().UTC()
 
-		promotedUser, err := cliCtx.AdminService.PromoteUserToAdmin(ctx, req)
-		if err != nil {
+		if err := cliCtx.Repository.UpdateUser(ctx, existingUser); err != nil {
 			return fmt.Errorf("failed to promote user to system admin: %v", err)
 		}
 
-		fmt.Printf("✅ Successfully promoted user %s to system admin\n", getStringValue(promotedUser.Email))
+		fmt.Printf("✅ Successfully promoted user %s to system admin\n", getStringValue(existingUser.Email))
 		return nil
 	}
 
@@ -456,17 +454,28 @@ func promoteUser(userIdentifier, level, reason string, tables []string) error {
 		return fmt.Errorf("failed to find user: %v", err)
 	}
 
-	if user.IsAdmin() {
-		return fmt.Errorf("user is already an admin with level: %s", *user.AdminLevel)
-	}
-
 	// Validate admin level
-	adminLevel := auth.AdminLevel(level)
-	switch adminLevel {
+	targetLevel := auth.AdminLevel(level)
+	switch targetLevel {
 	case auth.AdminLevelSystemAdmin, auth.AdminLevelSuperAdmin, auth.AdminLevelRegularAdmin, auth.AdminLevelModerator:
 		// Valid levels
 	default:
 		return fmt.Errorf("invalid admin level: %s", level)
+	}
+
+	// Check if this is a promotion to a higher level or initial promotion
+	if user.IsAdmin() {
+		currentLevel := *user.AdminLevel
+		targetLevelHierarchy := targetLevel.GetHierarchy()
+		currentLevelHierarchy := currentLevel.GetHierarchy()
+
+		if targetLevelHierarchy <= currentLevelHierarchy {
+			return fmt.Errorf("user is already at %s level. Use demote command to lower admin level or promote to a higher level", currentLevel)
+		}
+
+		fmt.Printf("🔄 Promoting existing %s to %s\n", currentLevel, targetLevel)
+	} else {
+		fmt.Printf("⬆️ Promoting user to %s\n", targetLevel)
 	}
 
 	// Get system admin for promotion (CLI operations are performed by system admin)
@@ -478,22 +487,63 @@ func promoteUser(userIdentifier, level, reason string, tables []string) error {
 		return fmt.Errorf("no system admin found to perform promotion")
 	}
 
-	req := &auth.PromoteUserRequest{
-		UserID:         user.ID,
-		AdminLevel:     adminLevel,
-		PromotedBy:     systemAdmins[0].ID,
-		Reason:         reason,
-		AssignedTables: tables,
+	promoterAdmin := systemAdmins[0]
+
+	// Validate that the promoter can perform this promotion
+	if err := auth.ValidateAdminPromotion(promoterAdmin, targetLevel); err != nil {
+		return fmt.Errorf("promotion not allowed: %v", err)
 	}
 
-	promotedUser, err := cliCtx.AdminService.PromoteUserToAdmin(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to promote user: %v", err)
-	}
+	// For existing admins, we need to update their level directly since PromoteUserToAdmin is for non-admins
+	if user.IsAdmin() {
+		// Update admin level and capabilities directly
+		user.AdminLevel = &targetLevel
+		capabilities := auth.GetDefaultCapabilities(targetLevel)
+		user.Capabilities = &capabilities
 
-	fmt.Printf("✅ Successfully promoted user %s to %s\n",
-		getStringValue(promotedUser.Email),
-		string(adminLevel))
+		// Add assigned tables for regular admins
+		if targetLevel == auth.AdminLevelRegularAdmin && len(tables) > 0 {
+			// Merge with existing tables to avoid duplicates
+			existingTables := make(map[string]bool)
+			for _, table := range user.AssignedTables {
+				existingTables[table] = true
+			}
+			for _, table := range tables {
+				if !existingTables[table] {
+					user.AssignedTables = append(user.AssignedTables, table)
+				}
+			}
+		}
+
+		user.UpdatedBy = &promoterAdmin.ID
+		user.UpdatedAt = time.Now().UTC()
+
+		if err := cliCtx.Repository.UpdateUser(ctx, user); err != nil {
+			return fmt.Errorf("failed to promote admin: %v", err)
+		}
+
+		fmt.Printf("✅ Successfully promoted admin %s to %s\n",
+			getStringValue(user.Email),
+			string(targetLevel))
+	} else {
+		// Use AdminService for promoting non-admin users
+		req := &auth.PromoteUserRequest{
+			UserID:         user.ID,
+			AdminLevel:     targetLevel,
+			PromotedBy:     promoterAdmin.ID,
+			Reason:         reason,
+			AssignedTables: tables,
+		}
+
+		promotedUser, err := cliCtx.AdminService.PromoteUserToAdmin(ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to promote user: %v", err)
+		}
+
+		fmt.Printf("✅ Successfully promoted user %s to %s\n",
+			getStringValue(promotedUser.Email),
+			string(targetLevel))
+	}
 
 	if len(tables) > 0 {
 		fmt.Printf("📋 Assigned tables: %s\n", strings.Join(tables, ", "))
@@ -531,15 +581,40 @@ func demoteAdmin(adminIdentifier, newLevel, reason string) error {
 		return fmt.Errorf("no system admin found to perform demotion")
 	}
 
+	demotingAdmin := systemAdmins[0]
+
+	// Validate that the demoting admin can manage the target admin
+	if !demotingAdmin.CanManageUser(admin) {
+		return fmt.Errorf("insufficient privileges to demote this admin")
+	}
+
 	var newAdminLevel *auth.AdminLevel
 	if newLevel != "" {
 		level := auth.AdminLevel(newLevel)
+
+		// Validate the new level is valid
+		switch level {
+		case auth.AdminLevelSystemAdmin, auth.AdminLevelSuperAdmin, auth.AdminLevelRegularAdmin, auth.AdminLevelModerator:
+			// Valid levels
+		default:
+			return fmt.Errorf("invalid admin level: %s", newLevel)
+		}
+
+		// Ensure we're actually demoting (new level should be lower)
+		currentLevel := *admin.AdminLevel
+		if level.GetHierarchy() >= currentLevel.GetHierarchy() {
+			return fmt.Errorf("new level %s is not lower than current level %s. Use promote command for upgrades", level, currentLevel)
+		}
+
 		newAdminLevel = &level
+		fmt.Printf("🔄 Demoting %s from %s to %s\n", getStringValue(admin.Email), currentLevel, level)
+	} else {
+		fmt.Printf("🔄 Removing admin privileges from %s (current level: %s)\n", getStringValue(admin.Email), *admin.AdminLevel)
 	}
 
 	req := &auth.DemoteAdminRequest{
 		AdminID:   admin.ID,
-		DemotedBy: systemAdmins[0].ID,
+		DemotedBy: demotingAdmin.ID,
 		Reason:    reason,
 		NewLevel:  newAdminLevel,
 	}
