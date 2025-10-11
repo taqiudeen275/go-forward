@@ -106,7 +106,9 @@
   - _Requirements: 1.6, 1.7, 1.8, 1.9, 1.10, 1.11_
 
 
-- [-] 2.4 Add multi-factor authentication support
+- [x] 2.4 Add multi-factor authentication support
+
+
 
 
   - Implement TOTP (Time-based One-Time Password) generation and validation

@@ -689,12 +689,12 @@ func TestAuthService_VerifyOTP(t *testing.T) {
 }
 
 func TestAuthService_AuthenticateAdmin(t *testing.T) {
-	mockRepo := new(MockRepository)
-	cfg := createTestConfig()
-	service := NewAuthService(mockRepo, cfg)
 	ctx := context.Background()
 
 	t.Run("successful admin authentication with MFA", func(t *testing.T) {
+		mockRepo := new(MockRepository)
+		cfg := createTestConfig()
+		service := NewAuthService(mockRepo, cfg)
 		admin := createTestAdmin()
 		// Enable MFA for the admin
 		admin.MFAEnabled = true
@@ -724,6 +724,10 @@ func TestAuthService_AuthenticateAdmin(t *testing.T) {
 	})
 
 	t.Run("admin authentication without MFA when required", func(t *testing.T) {
+		mockRepo := new(MockRepository)
+		cfg := createTestConfig()
+		service := NewAuthService(mockRepo, cfg)
+
 		admin := createTestAdmin()
 		// Explicitly ensure MFA is not enabled
 		admin.MFAEnabled = false
@@ -747,6 +751,10 @@ func TestAuthService_AuthenticateAdmin(t *testing.T) {
 	})
 
 	t.Run("admin authentication with MFA enabled but no code provided", func(t *testing.T) {
+		mockRepo := new(MockRepository)
+		cfg := createTestConfig()
+		service := NewAuthService(mockRepo, cfg)
+
 		admin := createTestAdmin()
 		// Enable MFA for the admin
 		admin.MFAEnabled = true
@@ -772,6 +780,10 @@ func TestAuthService_AuthenticateAdmin(t *testing.T) {
 	})
 
 	t.Run("admin authentication with non-admin user", func(t *testing.T) {
+		mockRepo := new(MockRepository)
+		cfg := createTestConfig()
+		service := NewAuthService(mockRepo, cfg)
+
 		user := createTestUser() // Regular user, not admin
 		req := &AdminAuthRequest{
 			Identifier: *user.Email,
