@@ -1,0 +1,155 @@
+# Unified Go Forward Framework Configuration
+# Copy this file to config.yaml and customize for your environment
+
+# Environment: development, staging, production
+environment: development
+
+# HTTP Server Configuration
+server:
+  host: localhost
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+  idle_timeout: 60s
+  max_header_bytes: 1048576
+  trusted_proxies: []
+  enable_profiling: false
+
+# PostgreSQL Database Configuration
+database:
+  host: localhost
+  port: 5432
+  name: goforward
+  user: postgres
+  password: postgres
+  ssl_mode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+  conn_max_idle_time: 5m
+
+# Redis Configuration
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  min_idle_conns: 2
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+
+# Authentication Configuration
+auth:
+  jwt_secret: "your-secret-key-change-this-in-production"
+  jwt_expiration: 24h
+  refresh_expiration: 168h # 7 days
+  otp_expiration: 10m
+  otp_length: 6
+  max_failed_attempts: 5
+  lockout_duration: 15m
+  enable_mfa: false
+  enable_cookie_auth: true
+  cookie_secure: true
+  cookie_http_only: true
+  cookie_same_site: Strict
+  password_min_length: 8
+  require_special_chars: true
+
+# Admin Dashboard Configuration
+admin:
+  dashboard_prefix: "/_"
+  enable_sql_editor: true
+  sql_editor_roles: ["system_admin"]
+  max_query_timeout: 30s
+  enable_audit_export: true
+  session_timeout: 8h
+  require_mfa_for_admin: true
+
+# Security Configuration
+security:
+  enable_rate_limit: true
+  rate_limit_per_minute: 60
+  enable_ip_whitelist: false
+  whitelisted_ips: []
+  enable_csrf: true
+  csrf_secret: "csrf-secret-change-this"
+  enable_cors: true
+  allowed_origins: ["*"]
+  enable_security_headers: true
+  content_security_policy: "default-src 'self'"
+  audit_retention_days: 90
+
+# Logging Configuration
+logging:
+  level: info
+  format: json
+  enable_audit_log: true
+  audit_log_path: "./logs/audit.log"
+  enable_access_log: true
+  access_log_path: "./logs/access.log"
+  max_file_size: 100 # MB
+  max_backups: 10
+  max_age: 30 # days
+  compress: true
+
+# Email Configuration
+email:
+  provider: smtp
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  smtp_user: your-email@gmail.com
+  smtp_pass: your-app-password
+  from_email: your-email@gmail.com
+  from_name: "Go Forward Framework"
+  enable_tls: true
+  settings: {}
+
+# SMS Configuration (Arkesel by default)
+sms:
+  provider: arkesel
+  api_key: your-arkesel-api-key
+  api_secret: your-arkesel-api-secret
+  from: "GoForward"
+  settings: {}
+
+# File Storage Configuration
+storage:
+  provider: local
+  local_path: "./storage"
+  max_file_size: 10485760 # 10MB
+  allowed_types:
+    - image/jpeg
+    - image/png
+    - image/gif
+    - application/pdf
+    - text/plain
+  s3_config: {}
+
+# Real-time Features Configuration
+realtime:
+  enable_websocket: true
+  max_connections: 1000
+  ping_interval: 54s
+  write_wait: 10s
+  pong_wait: 60s
+  enable_presence: true
+  enable_db_streaming: true
+
+# Plugin System Configuration
+plugin:
+  enable_plugins: false
+  plugin_dir: "./plugins"
+  allowed_plugins: []
+  enable_sandbox: true
+  max_memory_mb: 128
+  max_cpu_percent: 50
+
+# Cron Job Configuration
+cron:
+  enable_cron: true
+  max_concurrent: 5
+  default_timeout: 30m
+  log_retention: 30 # days
+  enable_web_ui: true
