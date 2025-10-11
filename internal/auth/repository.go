@@ -73,6 +73,13 @@ type Repository interface {
 	UpsertRateLimit(ctx context.Context, rateLimit *RateLimit) error
 	CleanExpiredRateLimits(ctx context.Context) error
 
+	// MFA recovery operations
+	CreateMFARecovery(ctx context.Context, recovery *MFARecovery) error
+	GetMFARecoveryByCode(ctx context.Context, recoveryCode string) (*MFARecovery, error)
+	GetMFARecoveryByID(ctx context.Context, id uuid.UUID) (*MFARecovery, error)
+	UpdateMFARecovery(ctx context.Context, recovery *MFARecovery) error
+	ListMFARecovery(ctx context.Context, userID uuid.UUID) ([]*MFARecovery, error)
+
 	// Emergency access operations
 	CreateEmergencyAccess(ctx context.Context, access *EmergencyAccess) error
 	GetEmergencyAccessByID(ctx context.Context, id uuid.UUID) (*EmergencyAccess, error)
@@ -1459,4 +1466,122 @@ func (r *repository) ListEmergencyAccess(ctx context.Context, filter *EmergencyA
 	}
 
 	return accessList, nil
+}
+
+// MFA recovery operations
+
+// CreateMFARecovery creates a new MFA recovery record
+func (r *repository) CreateMFARecovery(ctx context.Context, recovery *MFARecovery) error {
+	query := `
+		INSERT INTO mfa_recovery (
+			id, user_id, recovery_code, method, expires_at
+		) VALUES ($1, $2, $3, $4, $5)`
+
+	_, err := r.db.Exec(ctx, query,
+		recovery.ID, recovery.UserID, recovery.RecoveryCode,
+		recovery.Method, recovery.ExpiresAt,
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to create MFA recovery")
+	}
+
+	return nil
+}
+
+// GetMFARecoveryByCode retrieves an MFA recovery by recovery code
+func (r *repository) GetMFARecoveryByCode(ctx context.Context, recoveryCode string) (*MFARecovery, error) {
+	query := `
+		SELECT id, user_id, recovery_code, method, expires_at, used_at, created_at
+		FROM mfa_recovery 
+		WHERE recovery_code = $1 AND used_at IS NULL`
+
+	var recovery MFARecovery
+	err := r.db.QueryRow(ctx, query, recoveryCode).Scan(
+		&recovery.ID, &recovery.UserID, &recovery.RecoveryCode,
+		&recovery.Method, &recovery.ExpiresAt, &recovery.UsedAt,
+		&recovery.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errors.NewNotFound("MFA recovery not found")
+		}
+		return nil, errors.Wrap(err, "failed to get MFA recovery by code")
+	}
+
+	return &recovery, nil
+}
+
+// GetMFARecoveryByID retrieves an MFA recovery by ID
+func (r *repository) GetMFARecoveryByID(ctx context.Context, id uuid.UUID) (*MFARecovery, error) {
+	query := `
+		SELECT id, user_id, recovery_code, method, expires_at, used_at, created_at
+		FROM mfa_recovery WHERE id = $1`
+
+	var recovery MFARecovery
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&recovery.ID, &recovery.UserID, &recovery.RecoveryCode,
+		&recovery.Method, &recovery.ExpiresAt, &recovery.UsedAt,
+		&recovery.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errors.NewNotFound("MFA recovery not found")
+		}
+		return nil, errors.Wrap(err, "failed to get MFA recovery by ID")
+	}
+
+	return &recovery, nil
+}
+
+// UpdateMFARecovery updates an MFA recovery record
+func (r *repository) UpdateMFARecovery(ctx context.Context, recovery *MFARecovery) error {
+	query := `
+		UPDATE mfa_recovery SET
+			used_at = $2
+		WHERE id = $1`
+
+	result, err := r.db.Exec(ctx, query, recovery.ID, recovery.UsedAt)
+	if err != nil {
+		return errors.Wrap(err, "failed to update MFA recovery")
+	}
+
+	if result.RowsAffected() == 0 {
+		return errors.NewNotFound("MFA recovery not found")
+	}
+
+	return nil
+}
+
+// ListMFARecovery retrieves MFA recovery records for a user
+func (r *repository) ListMFARecovery(ctx context.Context, userID uuid.UUID) ([]*MFARecovery, error) {
+	query := `
+		SELECT id, user_id, recovery_code, method, expires_at, used_at, created_at
+		FROM mfa_recovery 
+		WHERE user_id = $1 
+		ORDER BY created_at DESC`
+
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list MFA recovery")
+	}
+	defer rows.Close()
+
+	var recoveries []*MFARecovery
+	for rows.Next() {
+		var recovery MFARecovery
+		err := rows.Scan(
+			&recovery.ID, &recovery.UserID, &recovery.RecoveryCode,
+			&recovery.Method, &recovery.ExpiresAt, &recovery.UsedAt,
+			&recovery.CreatedAt,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan MFA recovery")
+		}
+		recoveries = append(recoveries, &recovery)
+	}
+
+	return recoveries, nil
 }

@@ -224,3 +224,30 @@ func IsDuplicate(err error) bool {
 	}
 	return false
 }
+
+// IsAuthError checks if an error is an authentication error
+func IsAuthError(err error) bool {
+	if ue, ok := err.(*UnifiedError); ok {
+		return ue.Category == CategoryAuth
+	}
+	return false
+}
+
+// NewNotImplemented creates a not implemented error
+func NewNotImplemented(message string) error {
+	return &UnifiedError{
+		Code:      ErrInternalServer,
+		Message:   message,
+		Category:  CategoryServer,
+		Severity:  SeverityMedium,
+		Timestamp: time.Now().UTC(),
+		Details:   make(map[string]interface{}),
+	}
+}
+
+// ErrorResponse represents an API error response
+type ErrorResponse struct {
+	Error   string                 `json:"error"`
+	Code    ErrorCode              `json:"code,omitempty"`
+	Details map[string]interface{} `json:"details,omitempty"`
+}

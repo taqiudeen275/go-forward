@@ -48,6 +48,15 @@ type AuthService interface {
 	LockAccount(ctx context.Context, userID uuid.UUID, reason string) error
 	UnlockAccount(ctx context.Context, userID uuid.UUID, unlockedBy uuid.UUID) error
 
+	// MFA operations
+	GenerateTOTPSecret(ctx context.Context, userID uuid.UUID, issuer, accountName string) (*MFASetup, error)
+	VerifyTOTP(ctx context.Context, userID uuid.UUID, code string) error
+	EnableMFA(ctx context.Context, userID uuid.UUID, totpCode string) error
+	DisableMFA(ctx context.Context, userID uuid.UUID, totpCode string) error
+	GenerateBackupCodes(ctx context.Context, userID uuid.UUID) ([]string, error)
+	VerifyMFACode(ctx context.Context, userID uuid.UUID, code string) error
+	IsMFARequired(ctx context.Context, user *UnifiedUser) bool
+
 	// Validation
 	ValidateToken(ctx context.Context, tokenString string) (*JWTClaims, error)
 	ValidatePassword(password string) error
@@ -121,16 +130,19 @@ type JWTClaims struct {
 
 // authService implements the AuthService interface
 type authService struct {
-	repo   Repository
-	config *config.Config
+	repo       Repository
+	config     *config.Config
+	mfaService MFAService
 }
 
 // NewAuthService creates a new authentication service
 func NewAuthService(repo Repository, cfg *config.Config) AuthService {
-	return &authService{
+	service := &authService{
 		repo:   repo,
 		config: cfg,
 	}
+	service.mfaService = NewMFAService(repo)
+	return service
 }
 
 // Register creates a new user account
@@ -544,12 +556,26 @@ func (s *authService) AuthenticateAdmin(ctx context.Context, req *AdminAuthReque
 		return nil, errors.NewAuthError("invalid credentials")
 	}
 
+	// Check if MFA is required for this admin level
+	mfaRequired := s.mfaService.IsMFARequired(ctx, user)
+
+	// If MFA is required but not enabled, require setup
+	if mfaRequired && !user.MFAEnabled {
+		return nil, errors.NewAuthError("MFA setup required for admin access")
+	}
+
 	// Check MFA if enabled and required
 	if user.MFAEnabled && req.MFACode == "" {
 		return nil, errors.NewAuthError("MFA code required")
 	}
 
-	// TODO: Verify MFA code (will be implemented in MFA task)
+	// Verify MFA code if provided
+	if user.MFAEnabled && req.MFACode != "" {
+		if err := s.mfaService.VerifyMFACode(ctx, user.ID, req.MFACode); err != nil {
+			s.createSecurityEvent(ctx, &user.ID, SecurityEventTypes.LoginFailure, req.Identifier, "invalid MFA code")
+			return nil, errors.NewAuthError("invalid MFA code")
+		}
+	}
 
 	// Reset failed attempts
 	user.FailedAttempts = 0
@@ -1139,4 +1165,41 @@ func (s *authService) createSecurityEvent(ctx context.Context, userID *uuid.UUID
 
 	// Don't fail the main operation if security event logging fails
 	s.repo.CreateSecurityEvent(ctx, event)
+}
+
+// MFA operations - delegate to MFA service
+
+// GenerateTOTPSecret generates a new TOTP secret for a user
+func (s *authService) GenerateTOTPSecret(ctx context.Context, userID uuid.UUID, issuer, accountName string) (*MFASetup, error) {
+	return s.mfaService.GenerateTOTPSecret(ctx, userID, issuer, accountName)
+}
+
+// VerifyTOTP verifies a TOTP code for a user
+func (s *authService) VerifyTOTP(ctx context.Context, userID uuid.UUID, code string) error {
+	return s.mfaService.VerifyTOTP(ctx, userID, code)
+}
+
+// EnableMFA enables MFA for a user after verifying the TOTP code
+func (s *authService) EnableMFA(ctx context.Context, userID uuid.UUID, totpCode string) error {
+	return s.mfaService.EnableMFA(ctx, userID, totpCode)
+}
+
+// DisableMFA disables MFA for a user after verifying the TOTP code
+func (s *authService) DisableMFA(ctx context.Context, userID uuid.UUID, totpCode string) error {
+	return s.mfaService.DisableMFA(ctx, userID, totpCode)
+}
+
+// GenerateBackupCodes generates new backup codes for a user
+func (s *authService) GenerateBackupCodes(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	return s.mfaService.GenerateBackupCodes(ctx, userID)
+}
+
+// VerifyMFACode verifies either a TOTP code or backup code
+func (s *authService) VerifyMFACode(ctx context.Context, userID uuid.UUID, code string) error {
+	return s.mfaService.VerifyMFACode(ctx, userID, code)
+}
+
+// IsMFARequired checks if MFA is required for a user based on their admin level
+func (s *authService) IsMFARequired(ctx context.Context, user *UnifiedUser) bool {
+	return s.mfaService.IsMFARequired(ctx, user)
 }

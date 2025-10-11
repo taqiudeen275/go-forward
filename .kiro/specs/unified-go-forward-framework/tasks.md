@@ -59,6 +59,8 @@
 
 
 
+
+
   - Implement comprehensive authentication with multiple methods (OTP, credentials, custom)
   - Create hierarchical admin system (System Admin, Super Admin, Regular Admin, Moderator)
   - Add multi-factor authentication with TOTP and backup codes
@@ -104,7 +106,8 @@
   - _Requirements: 1.6, 1.7, 1.8, 1.9, 1.10, 1.11_
 
 
-- [ ] 2.4 Add multi-factor authentication support
+- [-] 2.4 Add multi-factor authentication support
+
 
   - Implement TOTP (Time-based One-Time Password) generation and validation
   - Create backup code generation and management

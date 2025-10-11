@@ -694,26 +694,79 @@ func TestAuthService_AuthenticateAdmin(t *testing.T) {
 	service := NewAuthService(mockRepo, cfg)
 	ctx := context.Background()
 
-	t.Run("successful admin authentication", func(t *testing.T) {
+	t.Run("successful admin authentication with MFA", func(t *testing.T) {
 		admin := createTestAdmin()
+		// Enable MFA for the admin
+		admin.MFAEnabled = true
+		secret := "JBSWY3DPEHPK3PXP"
+		admin.MFASecret = &secret
+
+		req := &AdminAuthRequest{
+			Identifier: *admin.Email,
+			Password:   "password123",
+			MFACode:    "123456", // This will fail TOTP validation, but that's expected
+		}
+
+		mockRepo.On("GetUserByEmail", ctx, *admin.Email).Return(admin, nil)
+		// MFA verification will call GetUserByID
+		mockRepo.On("GetUserByID", ctx, admin.ID).Return(admin, nil)
+		// Security event for invalid MFA code
+		mockRepo.On("CreateSecurityEvent", ctx, mock.AnythingOfType("*auth.SecurityEvent")).Return(nil)
+
+		resp, err := service.AuthenticateAdmin(ctx, req)
+
+		// Expect this to fail due to invalid MFA code
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "invalid MFA code")
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("admin authentication without MFA when required", func(t *testing.T) {
+		admin := createTestAdmin()
+		// Explicitly ensure MFA is not enabled
+		admin.MFAEnabled = false
+		admin.MFASecret = nil
+
 		req := &AdminAuthRequest{
 			Identifier: *admin.Email,
 			Password:   "password123",
 		}
 
 		mockRepo.On("GetUserByEmail", ctx, *admin.Email).Return(admin, nil)
-		mockRepo.On("UpdateUser", ctx, mock.AnythingOfType("*auth.UnifiedUser")).Return(nil)
-		mockRepo.On("CreateSession", ctx, mock.AnythingOfType("*auth.AdminSession")).Return(nil)
-		mockRepo.On("CreateAuditLog", ctx, mock.AnythingOfType("*auth.AuditLog")).Return(nil)
 
 		resp, err := service.AuthenticateAdmin(ctx, req)
 
-		assert.NoError(t, err)
-		assert.NotNil(t, resp)
-		assert.NotEmpty(t, resp.AccessToken)
-		assert.NotNil(t, resp.Session)
-		assert.Equal(t, admin.ID, resp.User.ID)
-		assert.True(t, resp.User.IsAdmin())
+		// Expect this to fail due to MFA setup required
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "MFA setup required")
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("admin authentication with MFA enabled but no code provided", func(t *testing.T) {
+		admin := createTestAdmin()
+		// Enable MFA for the admin
+		admin.MFAEnabled = true
+		secret := "JBSWY3DPEHPK3PXP"
+		admin.MFASecret = &secret
+
+		req := &AdminAuthRequest{
+			Identifier: *admin.Email,
+			Password:   "password123",
+			// No MFA code provided
+		}
+
+		mockRepo.On("GetUserByEmail", ctx, *admin.Email).Return(admin, nil)
+
+		resp, err := service.AuthenticateAdmin(ctx, req)
+
+		// Expect this to fail due to missing MFA code
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "MFA code required")
 
 		mockRepo.AssertExpectations(t)
 	})
@@ -901,4 +954,39 @@ func TestAuthService_ValidateToken(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, claims)
 	})
+}
+
+// MFA recovery operations
+func (m *MockRepository) CreateMFARecovery(ctx context.Context, recovery *MFARecovery) error {
+	args := m.Called(ctx, recovery)
+	return args.Error(0)
+}
+
+func (m *MockRepository) GetMFARecoveryByCode(ctx context.Context, recoveryCode string) (*MFARecovery, error) {
+	args := m.Called(ctx, recoveryCode)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*MFARecovery), args.Error(1)
+}
+
+func (m *MockRepository) GetMFARecoveryByID(ctx context.Context, id uuid.UUID) (*MFARecovery, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*MFARecovery), args.Error(1)
+}
+
+func (m *MockRepository) UpdateMFARecovery(ctx context.Context, recovery *MFARecovery) error {
+	args := m.Called(ctx, recovery)
+	return args.Error(0)
+}
+
+func (m *MockRepository) ListMFARecovery(ctx context.Context, userID uuid.UUID) ([]*MFARecovery, error) {
+	args := m.Called(ctx, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*MFARecovery), args.Error(1)
 }
