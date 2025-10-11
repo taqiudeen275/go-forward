@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/taqiudeen275/go-foward/internal/config"
+	"github.com/taqiudeen275/go-foward/internal/template"
 	"github.com/taqiudeen275/go-foward/pkg/errors"
 )
 
@@ -133,15 +133,17 @@ type authService struct {
 	repo       Repository
 	config     *config.Config
 	mfaService MFAService
+	otpService OTPService
 }
 
 // NewAuthService creates a new authentication service
-func NewAuthService(repo Repository, cfg *config.Config) AuthService {
+func NewAuthService(repo Repository, cfg *config.Config, templateSvc *template.Service) AuthService {
 	service := &authService{
 		repo:   repo,
 		config: cfg,
 	}
 	service.mfaService = NewMFAService(repo)
+	service.otpService = NewOTPService(repo, templateSvc, cfg)
 	return service
 }
 
@@ -349,174 +351,30 @@ func (s *authService) Logout(ctx context.Context, sessionID uuid.UUID) error {
 
 // SendOTP generates and sends an OTP code
 func (s *authService) SendOTP(ctx context.Context, req *OTPRequest) error {
-	// Generate OTP code
-	code, err := s.generateOTPCode()
-	if err != nil {
-		return errors.Wrap(err, "failed to generate OTP code")
-	}
-
-	// Determine if identifier is email or phone
-	var email, phone *string
-	if strings.Contains(req.Identifier, "@") {
-		email = &req.Identifier
-	} else {
-		phone = &req.Identifier
-	}
-
-	// Create OTP record
-	otp := &OTPCode{
-		ID:          uuid.New(),
-		Email:       email,
-		Phone:       phone,
-		Code:        code,
-		Purpose:     req.Purpose,
-		MaxAttempts: 3,
-		ExpiresAt:   time.Now().Add(s.config.Auth.OTPExpiration),
-		CreatedAt:   time.Now().UTC(),
-	}
-
-	// Try to find existing user for audit purposes
-	var userID *uuid.UUID
-	if email != nil {
-		if user, _ := s.repo.GetUserByEmail(ctx, *email); user != nil {
-			otp.UserID = &user.ID
-			userID = &user.ID
-		}
-	} else if phone != nil {
-		if user, _ := s.repo.GetUserByPhone(ctx, *phone); user != nil {
-			otp.UserID = &user.ID
-			userID = &user.ID
-		}
-	}
-
-	if err := s.repo.CreateOTP(ctx, otp); err != nil {
-		return errors.Wrap(err, "failed to create OTP")
-	}
-
-	// TODO: Send OTP via email or SMS (will be implemented in template system task)
-	// For now, we'll just log it (in development mode, this could be useful)
-	if s.config.IsDevelopment() {
-		fmt.Printf("OTP Code for %s: %s\n", req.Identifier, code)
-	}
-
-	// Create audit log
-	if userID != nil {
-		s.createAuditLog(ctx, *userID, "otp_sent", "otp_codes", otp.ID.String(), true, map[string]any{
-			"purpose":    req.Purpose,
-			"identifier": req.Identifier,
-		})
-	}
-
-	return nil
+	return s.otpService.SendOTP(ctx, req)
 }
 
 // VerifyOTP verifies an OTP code and returns authentication response
 func (s *authService) VerifyOTP(ctx context.Context, req *VerifyOTPRequest) (*AuthResponse, error) {
-	// Get OTP by identifier and purpose
-	otp, err := s.repo.GetOTPByIdentifier(ctx, req.Identifier, req.Purpose)
+	// Use the OTP service for verification, but we need to handle token generation here
+	otpResponse, err := s.otpService.VerifyOTP(ctx, req)
 	if err != nil {
-		s.createSecurityEvent(ctx, nil, "otp_verification_failed", req.Identifier, "OTP not found")
-		return nil, errors.NewAuthError("invalid or expired OTP")
+		return nil, err
 	}
 
-	// Check if OTP is expired
-	if otp.IsExpired() {
-		s.createSecurityEvent(ctx, otp.UserID, "otp_verification_failed", req.Identifier, "OTP expired")
-		return nil, errors.NewAuthError("OTP has expired")
-	}
-
-	// Check if OTP is already used
-	if otp.IsUsed() {
-		s.createSecurityEvent(ctx, otp.UserID, "otp_verification_failed", req.Identifier, "OTP already used")
-		return nil, errors.NewAuthError("OTP has already been used")
-	}
-
-	// Check attempts
-	if !otp.CanAttempt() {
-		s.createSecurityEvent(ctx, otp.UserID, "otp_verification_failed", req.Identifier, "max attempts exceeded")
-		return nil, errors.NewAuthError("maximum OTP attempts exceeded")
-	}
-
-	// Verify code
-	if subtle.ConstantTimeCompare([]byte(req.Code), []byte(otp.Code)) != 1 {
-		// Increment attempts
-		otp.Attempts++
-		s.repo.UpdateOTPAttempts(ctx, otp.ID, otp.Attempts)
-		s.createSecurityEvent(ctx, otp.UserID, "otp_verification_failed", req.Identifier, "invalid code")
-		return nil, errors.NewAuthError("invalid OTP code")
-	}
-
-	// Mark OTP as used
-	if err := s.repo.MarkOTPUsed(ctx, otp.ID); err != nil {
-		return nil, errors.Wrap(err, "failed to mark OTP as used")
-	}
-
-	// Find or create user based on purpose
-	var user *UnifiedUser
-	if req.Purpose == "registration" {
-		// Create new user for registration
-		user = &UnifiedUser{
-			ID:        uuid.New(),
-			Email:     otp.Email,
-			Phone:     otp.Phone,
-			Metadata:  make(map[string]any),
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
-		}
-
-		// Set verification status
-		if otp.Email != nil {
-			user.EmailVerified = true
-		}
-		if otp.Phone != nil {
-			user.PhoneVerified = true
-		}
-
-		if err := s.repo.CreateUser(ctx, user); err != nil {
-			return nil, errors.Wrap(err, "failed to create user")
-		}
-
-		s.createAuditLog(ctx, user.ID, AuditActions.UserCreate, "users", user.ID.String(), true, nil)
-	} else {
-		// Find existing user
-		if otp.Email != nil {
-			user, err = s.repo.GetUserByEmail(ctx, *otp.Email)
-		} else if otp.Phone != nil {
-			user, err = s.repo.GetUserByPhone(ctx, *otp.Phone)
-		}
-
-		if err != nil {
-			return nil, errors.NewAuthError("user not found")
-		}
-
-		// Update verification status if needed
-		if req.Purpose == "verification" {
-			if otp.Email != nil && !user.EmailVerified {
-				user.EmailVerified = true
-				user.UpdatedAt = time.Now().UTC()
-				s.repo.UpdateUser(ctx, user)
-			}
-			if otp.Phone != nil && !user.PhoneVerified {
-				user.PhoneVerified = true
-				user.UpdatedAt = time.Now().UTC()
-				s.repo.UpdateUser(ctx, user)
-			}
-		}
-	}
-
-	// Generate tokens
-	accessToken, refreshToken, expiresAt, err := s.generateTokens(user)
+	// Generate proper tokens
+	accessToken, refreshToken, expiresAt, err := s.generateTokens(otpResponse.User)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate tokens")
 	}
 
 	// Create audit log
-	s.createAuditLog(ctx, user.ID, "otp_verified", "otp_codes", otp.ID.String(), true, map[string]any{
+	s.createAuditLog(ctx, otpResponse.User.ID, "otp_verified", "otp_codes", "", true, map[string]any{
 		"purpose": req.Purpose,
 	})
 
 	return &AuthResponse{
-		User:         user,
+		User:         otpResponse.User,
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresAt:    expiresAt,

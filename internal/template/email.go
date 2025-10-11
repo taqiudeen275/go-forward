@@ -76,28 +76,33 @@ func (p *SMTPProvider) SendEmail(ctx context.Context, req *EmailRequest) error {
 	addr := fmt.Sprintf("%s:%d", p.config.SMTPHost, p.config.SMTPPort)
 
 	if p.config.EnableTLS {
-		// Use TLS connection
-		conn, err := tls.Dial("tcp", addr, tlsConfig)
-		if err != nil {
-			return errors.NewExternalServiceError(fmt.Sprintf("Failed to connect to SMTP server: %v", err))
-		}
-		defer conn.Close()
+		if p.config.SMTPPort == 465 {
+			// Use direct TLS connection (port 465)
+			conn, err := tls.Dial("tcp", addr, tlsConfig)
+			if err != nil {
+				return errors.NewExternalServiceError(fmt.Sprintf("Failed to connect to SMTP server: %v", err))
+			}
+			defer conn.Close()
 
-		client, err := smtp.NewClient(conn, p.config.SMTPHost)
-		if err != nil {
-			return errors.NewExternalServiceError(fmt.Sprintf("Failed to create SMTP client: %v", err))
-		}
-		defer client.Quit()
+			client, err := smtp.NewClient(conn, p.config.SMTPHost)
+			if err != nil {
+				return errors.NewExternalServiceError(fmt.Sprintf("Failed to create SMTP client: %v", err))
+			}
+			defer client.Quit()
 
-		if err := client.Auth(auth); err != nil {
-			return errors.NewExternalServiceError(fmt.Sprintf("SMTP authentication failed: %v", err))
-		}
+			if err := client.Auth(auth); err != nil {
+				return errors.NewExternalServiceError(fmt.Sprintf("SMTP authentication failed: %v", err))
+			}
 
-		return p.sendMessage(client, from, req.To, message)
-	} else {
-		// Use plain connection with STARTTLS
-		return smtp.SendMail(addr, auth, from, req.To, []byte(message))
+			return p.sendMessage(client, from, req.To, message)
+		} else if p.config.SMTPPort == 587 {
+			// Use STARTTLS for port 587 (Gmail)
+			return p.sendWithSTARTTLS(addr, auth, from, req.To, message)
+		}
 	}
+
+	// Fallback to plain SMTP
+	return smtp.SendMail(addr, auth, from, req.To, []byte(message))
 }
 
 // ValidateConfig validates the SMTP configuration
@@ -179,6 +184,36 @@ func (p *SMTPProvider) sendMessage(client *smtp.Client, from string, to []string
 	}
 
 	return nil
+}
+
+// sendWithSTARTTLS sends email using STARTTLS (proper method for port 587)
+func (p *SMTPProvider) sendWithSTARTTLS(addr string, auth smtp.Auth, from string, to []string, message string) error {
+	// Connect to SMTP server without TLS first
+	client, err := smtp.Dial(addr)
+	if err != nil {
+		return errors.NewExternalServiceError(fmt.Sprintf("Failed to connect to SMTP server: %v", err))
+	}
+	defer client.Quit()
+
+	// Start TLS if supported
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		tlsConfig := &tls.Config{
+			ServerName: p.config.SMTPHost,
+		}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return errors.NewExternalServiceError(fmt.Sprintf("Failed to start TLS: %v", err))
+		}
+	}
+
+	// Authenticate if credentials provided
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return errors.NewExternalServiceError(fmt.Sprintf("SMTP authentication failed: %v", err))
+		}
+	}
+
+	// Send message using the existing sendMessage method
+	return p.sendMessage(client, from, to, message)
 }
 
 // EmailService manages email providers and template integration

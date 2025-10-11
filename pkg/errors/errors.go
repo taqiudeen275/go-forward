@@ -27,6 +27,9 @@ const (
 	// Validation errors
 	ErrValidation ErrorCode = "VALIDATION_ERROR"
 
+	// Rate limiting errors
+	ErrRateLimit ErrorCode = "RATE_LIMIT_EXCEEDED"
+
 	// External service errors
 	ErrExternalService ErrorCode = "EXTERNAL_SERVICE_ERROR"
 
@@ -208,6 +211,19 @@ func NewNotFoundError(message string) *UnifiedError {
 		WithSeverity(SeverityLow)
 }
 
+func NewRateLimitError(message string) *UnifiedError {
+	return New(ErrRateLimit, message).
+		WithCategory(CategorySecurity).
+		WithSeverity(SeverityMedium).
+		ShouldAuditLog()
+}
+
+func NewConflictError(message string) *UnifiedError {
+	return New(ErrDuplicateRecord, message).
+		WithCategory(CategoryDB).
+		WithSeverity(SeverityLow)
+}
+
 // Wrap wraps an error with additional context
 func Wrap(err error, message string) error {
 	if err == nil {
@@ -287,6 +303,22 @@ func IsExternalServiceError(err error) bool {
 func IsNotFoundError(err error) bool {
 	if ue, ok := err.(*UnifiedError); ok {
 		return ue.Code == ErrRecordNotFound
+	}
+	return false
+}
+
+// IsRateLimitError checks if an error is a rate limit error
+func IsRateLimitError(err error) bool {
+	if ue, ok := err.(*UnifiedError); ok {
+		return ue.Code == ErrRateLimit
+	}
+	return false
+}
+
+// IsConflictError checks if an error is a conflict error
+func IsConflictError(err error) bool {
+	if ue, ok := err.(*UnifiedError); ok {
+		return ue.Code == ErrDuplicateRecord
 	}
 	return false
 }

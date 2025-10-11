@@ -187,6 +187,11 @@ func (m *MockRepository) MarkOTPUsed(ctx context.Context, id uuid.UUID) error {
 	return args.Error(0)
 }
 
+func (m *MockRepository) InvalidateOTPsByIdentifier(ctx context.Context, identifier string, purpose string) error {
+	args := m.Called(ctx, identifier, purpose)
+	return args.Error(0)
+}
+
 func (m *MockRepository) CleanExpiredOTPs(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)

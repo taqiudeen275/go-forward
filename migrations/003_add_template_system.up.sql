@@ -1,27 +1,19 @@
 -- Migration: Add Template System (Simple)
 -- Description: Creates basic template tables without default data
 
--- Templates table
-CREATE TABLE IF NOT EXISTS templates (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    type VARCHAR(20) NOT NULL CHECK (type IN ('email', 'sms')),
-    purpose VARCHAR(50) NOT NULL CHECK (purpose IN (
-        'login', 'registration', 'verification', 'password_reset', 
-        'mfa_setup', 'account_lockout', 'welcome', 'security_alert'
-    )),
-    language VARCHAR(5) NOT NULL DEFAULT 'en',
-    version INTEGER NOT NULL DEFAULT 1,
-    subject TEXT, -- For email templates
-    content TEXT NOT NULL,
-    variables JSONB DEFAULT '[]'::jsonb,
-    is_default BOOLEAN NOT NULL DEFAULT false,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    metadata JSONB DEFAULT '{}'::jsonb
-);
+-- Add missing columns to existing templates table
+ALTER TABLE templates 
+ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+
+-- Drop foreign key constraints temporarily to change column types
+ALTER TABLE templates DROP CONSTRAINT IF EXISTS templates_created_by_fkey;
+ALTER TABLE templates DROP CONSTRAINT IF EXISTS templates_updated_by_fkey;
+
+-- Update column types
+ALTER TABLE templates 
+ALTER COLUMN created_by TYPE VARCHAR(255),
+ALTER COLUMN updated_by TYPE VARCHAR(255);
 
 -- Template versions table for version history
 CREATE TABLE IF NOT EXISTS template_versions (

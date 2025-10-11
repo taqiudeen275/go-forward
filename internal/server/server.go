@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/taqiudeen275/go-foward/internal/auth"
 	"github.com/taqiudeen275/go-foward/internal/config"
 	"github.com/taqiudeen275/go-foward/internal/database"
 	"github.com/taqiudeen275/go-foward/internal/docs"
+	"github.com/taqiudeen275/go-foward/internal/template"
 	"github.com/taqiudeen275/go-foward/pkg/errors"
 	"github.com/taqiudeen275/go-foward/pkg/logger"
 	"github.com/taqiudeen275/go-foward/pkg/middleware"
@@ -112,11 +114,26 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 	router.Use(middleware.AuditMiddleware())
 	router.Use(middleware.ErrorMiddleware())
 
-	// Initialize database connection for health checks
+	// Initialize database connection
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Printf("Warning: Database connection failed: %v", err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
+
+	// Initialize template service
+	templateService, err := template.NewService(db.PG, cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize template service: %v", err)
+	}
+
+	// Ensure default OTP templates exist
+	if err := templateService.EnsureOTPTemplatesExist(context.Background()); err != nil {
+		log.Printf("Warning: Failed to create default OTP templates: %v", err)
+	}
+
+	// Initialize authentication service
+	authRepo := auth.NewRepository(db.PG)
+	authService := auth.NewAuthService(authRepo, cfg, templateService)
 
 	// Initialize Swagger documentation service
 	swaggerService := docs.NewSwaggerService(cfg)
@@ -139,7 +156,7 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 		c.JSON(http.StatusOK, health)
 	})
 
-	// API routes (will be expanded in later tasks)
+	// API routes
 	api := router.Group("/api")
 	{
 		api.GET("/", func(c *gin.Context) {
@@ -149,6 +166,49 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 				"environment": cfg.Environment,
 			})
 		})
+
+		// Initialize authentication middleware
+		authMiddleware := auth.NewAuthMiddleware(authService, cfg)
+
+		// Authentication routes
+		authHandlers := auth.NewAuthHandlers(authService, cfg)
+		otpHandlers := auth.NewOTPHandlers(authService)
+
+		authGroup := api.Group("/auth")
+		{
+			// Standard authentication (public routes)
+			authGroup.POST("/register", authHandlers.Register)
+			authGroup.POST("/login", authHandlers.Login)
+			authGroup.POST("/refresh", authHandlers.RefreshToken)
+			authGroup.POST("/logout", authMiddleware.RequireAuth(), authHandlers.Logout)
+
+			// Password management
+			authGroup.POST("/change-password", authMiddleware.RequireAuth(), authHandlers.ChangePassword)
+			authGroup.POST("/reset-password", authHandlers.ResetPassword)
+
+			// Account management
+			authGroup.GET("/me", authMiddleware.RequireAuth(), authHandlers.GetCurrentUser)
+			authGroup.PUT("/me", authMiddleware.RequireAuth(), authHandlers.UpdateProfile)
+
+			// Verification
+			authGroup.POST("/verify/email", authMiddleware.RequireAuth(), authHandlers.SendEmailVerification)
+			authGroup.POST("/verify/phone", authMiddleware.RequireAuth(), authHandlers.SendPhoneVerification)
+
+			// Admin authentication
+			adminAuth := authGroup.Group("/admin")
+			{
+				adminAuth.POST("/login", authHandlers.AdminLogin)
+				adminAuth.POST("/logout", authMiddleware.RequireAdminSession(), authHandlers.AdminLogout)
+				adminAuth.GET("/session", authMiddleware.RequireAdminSession(), authHandlers.GetAdminSession)
+				adminAuth.POST("/session/refresh", authMiddleware.RequireAdminSession(), authHandlers.RefreshAdminSession)
+			}
+		}
+
+		// Register OTP routes
+		auth.RegisterOTPRoutes(authGroup, otpHandlers)
+
+		// Register MFA routes
+		auth.RegisterMFARoutes(authGroup, authService, authMiddleware.RequireAuth())
 
 		// Swagger documentation endpoints
 		api.GET("/swagger.json", swaggerService.ServeSwaggerJSON())

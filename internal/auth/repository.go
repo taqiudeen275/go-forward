@@ -50,6 +50,7 @@ type Repository interface {
 	GetOTPByIdentifier(ctx context.Context, identifier string, purpose string) (*OTPCode, error)
 	UpdateOTPAttempts(ctx context.Context, id uuid.UUID, attempts int) error
 	MarkOTPUsed(ctx context.Context, id uuid.UUID) error
+	InvalidateOTPsByIdentifier(ctx context.Context, identifier string, purpose string) error
 	CleanExpiredOTPs(ctx context.Context) error
 
 	// Template operations
@@ -841,6 +842,24 @@ func (r *repository) MarkOTPUsed(ctx context.Context, id uuid.UUID) error {
 
 	if result.RowsAffected() == 0 {
 		return errors.NewNotFound("OTP not found")
+	}
+
+	return nil
+}
+
+// InvalidateOTPsByIdentifier marks all unused OTPs for an identifier and purpose as used
+func (r *repository) InvalidateOTPsByIdentifier(ctx context.Context, identifier string, purpose string) error {
+	query := `
+		UPDATE otp_codes 
+		SET used_at = NOW() 
+		WHERE (email = $1 OR phone = $1) 
+		AND purpose = $2 
+		AND used_at IS NULL 
+		AND expires_at > NOW()`
+
+	_, err := r.db.Exec(ctx, query, identifier, purpose)
+	if err != nil {
+		return errors.Wrap(err, "failed to invalidate existing OTPs")
 	}
 
 	return nil
