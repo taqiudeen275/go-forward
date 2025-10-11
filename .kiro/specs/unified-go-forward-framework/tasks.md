@@ -118,7 +118,8 @@
   - Create MFA recovery procedures
   - _Requirements: 8.7, 8.8, 8.10_
 
-- [-] 2.5 Create customizable template system
+- [x] 2.5 Create customizable template system
+
 
 
 

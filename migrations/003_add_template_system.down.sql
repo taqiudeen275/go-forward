@@ -1,4 +1,4 @@
--- Migration: Remove Template System
+-- Migration: Remove Template System (Simple)
 -- Description: Drops all template-related tables and functions
 
 -- Drop triggers first
