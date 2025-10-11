@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/taqiudeen275/go-foward/pkg/errors"
@@ -51,7 +52,7 @@ func handleError(c *gin.Context, err error) {
 	response := ErrorResponse{
 		Error:     "Internal server error",
 		RequestID: requestID,
-		Timestamp: "2024-01-01T00:00:00Z", // Should use actual timestamp
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 
 	c.JSON(http.StatusInternalServerError, response)

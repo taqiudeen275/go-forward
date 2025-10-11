@@ -38,7 +38,8 @@ func Start() {
 	)
 
 	// Validate configuration
-	if result := config.ValidateConfig(cfg); !result.Valid {
+	result := config.ValidateConfig(cfg)
+	if !result.Valid {
 		appLogger.Error("Configuration validation failed", "errors", result.Errors)
 		os.Exit(1)
 	}

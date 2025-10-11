@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/taqiudeen275/go-foward/internal/config"
+	"github.com/taqiudeen275/go-foward/internal/database"
 )
 
 // ExecuteMigrationCLI handles migration CLI commands

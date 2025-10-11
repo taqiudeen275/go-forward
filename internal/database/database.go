@@ -98,9 +98,14 @@ func (db *Database) initRedis() error {
 		WriteTimeout: db.config.Redis.WriteTimeout,
 	})
 
-	// Test connection
+	// Test connection - make Redis optional for development
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		return errors.NewDatabaseError(fmt.Sprintf("Failed to connect to Redis: %v", err))
+		db.logger.Warn("Redis connection failed, continuing without Redis",
+			"host", db.config.Redis.Host,
+			"port", db.config.Redis.Port,
+			"error", err,
+		)
+		return nil // Don't fail if Redis is not available
 	}
 
 	db.Redis = rdb

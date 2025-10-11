@@ -1,5 +1,3 @@
 old_implementation/
-server.exe
-migrate.exe
-admin.exe
+go-forward.exe
 config.yaml
