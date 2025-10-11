@@ -2,13 +2,6 @@
 
 - [x] 1. Foundation and Single Executable Architecture
 
-
-
-
-
-
-
-
   - Set up unified project structure with single executable architecture
   - Create core configuration system with dynamic reflection
   - Implement basic CLI framework with server/admin/migrate modes
@@ -19,8 +12,6 @@
 
 - [x] 1.1 Create unified project structure and build system
 
-
-
   - Set up Go module with proper directory structure (cmd, internal, pkg, migrations, dashboard)
   - Create single main.go that handles server/CLI/migration modes based on arguments
   - Set up multi-stage Dockerfile with SvelteKit dashboard embedding
@@ -29,8 +20,6 @@
 
 - [x] 1.2 Implement dynamic configuration system
 
-
-
   - Create comprehensive configuration structure with all framework sections
   - Implement YAML configuration loading with environment variable overrides
   - Add configuration validation with detailed error messages
@@ -38,11 +27,7 @@
   - Add configuration backup and restore functionality
   - _Requirements: 10.1, 10.2, 14.5_
 
-
-
 - [x] 1.3 Set up database foundation with security schema
-
-
 
   - Create PostgreSQL connection with pgx driver and connection pooling
   - Set up Redis connection for caching and real-time features
@@ -52,11 +37,7 @@
 
   - _Requirements: 2.1, 2.3, 9.1, 7.3_
 
-
-
 - [x] 1.4 Create comprehensive logging and error handling
-
-
 
   - Implement unified error system with categorization and severity levels
   - Create structured logging with audit trail integration
@@ -65,10 +46,7 @@
   - Add performance monitoring and metrics collection
   - _Requirements: 9.1, 9.2, 16.1_
 
-
-
 - [x] 1.5 Initialize Swagger documentation framework
-
 
   - Set up Swagger/OpenAPI documentation generation
   - Create automatic endpoint documentation from route registration
@@ -78,11 +56,6 @@
   - _Requirements: 16.2, 16.3, 16.4_
 
 - [-] 2. Enhanced Authentication System with Admin Hierarchy
-
-
-
-
-
 
   - Implement comprehensive authentication with multiple methods (OTP, credentials, custom)
   - Create hierarchical admin system (System Admin, Super Admin, Regular Admin, Moderator)
@@ -94,9 +67,7 @@
   - Generate comprehensive authentication API documentation
   - _Requirements: 1.1, 1.2, 1.4, 8.1, 8.7, 11.1, 15.1, 15.2_
 
-- [-] 2.1 Create unified user and admin models
-
-
+- [x] 2.1 Create unified user and admin models
 
   - Design and implement unified user table with admin capabilities
   - Create admin roles and capabilities tables with hierarchical structure
@@ -123,6 +94,7 @@
   - Implement context-aware authorization decisions
   - Add admin assignment and promotion functionality
   - _Requirements: 1.6, 1.7, 1.8, 1.9, 1.10, 1.11_
+
 
 - [ ] 2.4 Add multi-factor authentication support
 
