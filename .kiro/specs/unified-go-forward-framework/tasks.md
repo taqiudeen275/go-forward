@@ -63,6 +63,8 @@
 
 
 
+
+
   - Implement comprehensive authentication with multiple methods (OTP, credentials, custom)
   - Create hierarchical admin system (System Admin, Super Admin, Regular Admin, Moderator)
   - Add multi-factor authentication with TOTP and backup codes
@@ -122,11 +124,6 @@
 
 - [x] 2.5 Create customizable template system
 
-
-
-
-
-
   - Design template system for email and SMS communications
   - Implement template storage with versioning and language support
   - Create template rendering engine with variable substitution
@@ -138,11 +135,6 @@
 - [x] 2.6 Build OTP authentication with templates
 
 
-
-
-
-
-
   - Implement OTP generation with configurable length and expiration
   - Create OTP storage and validation with attempt tracking
   - Add email OTP delivery using customizable templates
@@ -151,7 +143,8 @@
   - Add rate limiting and security monitoring for OTP requests
   - _Requirements: 1.1, 1.2, 15.2, 15.8_
 
-- [ ] 2.7 Create CLI admin management commands
+- [-] 2.7 Create CLI admin management commands
+
 
   - Implement CLI commands for system admin creation and management
   - Add environment detection with production-specific security requirements
