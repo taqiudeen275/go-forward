@@ -77,6 +77,7 @@ type AuthConfig struct {
 	OTPLength           int           `mapstructure:"otp_length" yaml:"otp_length" json:"otp_length"`
 	MaxFailedAttempts   int           `mapstructure:"max_failed_attempts" yaml:"max_failed_attempts" json:"max_failed_attempts"`
 	LockoutDuration     time.Duration `mapstructure:"lockout_duration" yaml:"lockout_duration" json:"lockout_duration"`
+	BcryptCost          int           `mapstructure:"bcrypt_cost" yaml:"bcrypt_cost" json:"bcrypt_cost"`
 	EnableMFA           bool          `mapstructure:"enable_mfa" yaml:"enable_mfa" json:"enable_mfa"`
 	EnableCookieAuth    bool          `mapstructure:"enable_cookie_auth" yaml:"enable_cookie_auth" json:"enable_cookie_auth"`
 	CookieSecure        bool          `mapstructure:"cookie_secure" yaml:"cookie_secure" json:"cookie_secure"`
@@ -292,6 +293,7 @@ func setDefaults() {
 	viper.SetDefault("auth.otp_length", 6)
 	viper.SetDefault("auth.max_failed_attempts", 5)
 	viper.SetDefault("auth.lockout_duration", "15m")
+	viper.SetDefault("auth.bcrypt_cost", 12)
 	viper.SetDefault("auth.enable_mfa", false)
 	viper.SetDefault("auth.enable_cookie_auth", true)
 	viper.SetDefault("auth.cookie_secure", true)

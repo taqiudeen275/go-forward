@@ -983,22 +983,6 @@ func (s *authService) findUserByIdentifier(ctx context.Context, identifier strin
 	return s.repo.GetUserByUsername(ctx, identifier)
 }
 
-// hashPassword hashes a password using bcrypt
-func (s *authService) hashPassword(password string) (string, error) {
-	// Use cost 12 for good security/performance balance
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
-	if err != nil {
-		return "", err
-	}
-	return string(hash), nil
-}
-
-// verifyPassword verifies a password against its hash
-func (s *authService) verifyPassword(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
-
 // generateTokens generates access and refresh tokens
 func (s *authService) generateTokens(user *UnifiedUser) (string, string, time.Time, error) {
 	return s.generateTokensWithSession(user, uuid.Nil)
@@ -1115,6 +1099,27 @@ func (s *authService) createAuditLog(ctx context.Context, userID uuid.UUID, acti
 
 	// Don't fail the main operation if audit logging fails
 	s.repo.CreateAuditLog(ctx, auditLog)
+}
+
+// hashPassword hashes a password using bcrypt
+func (s *authService) hashPassword(password string) (string, error) {
+	cost := s.config.Auth.BcryptCost
+	if cost == 0 {
+		cost = bcrypt.DefaultCost
+	}
+
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), cost)
+	if err != nil {
+		return "", err
+	}
+
+	return string(hashedBytes), nil
+}
+
+// verifyPassword verifies a password against its hash
+func (s *authService) verifyPassword(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
 }
 
 // createSecurityEvent creates a security event

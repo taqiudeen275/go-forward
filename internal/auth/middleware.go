@@ -396,15 +396,21 @@ func (m *AuthMiddleware) getSessionToken(c *gin.Context) string {
 
 // getUserFromClaims retrieves user from JWT claims
 func (m *AuthMiddleware) getUserFromClaims(ctx context.Context, claims *JWTClaims) (*UnifiedUser, error) {
-	// For now, we'll need to get the repository from the auth service
-	// In a real implementation, we might want to cache user data or pass the repository
-	// This is a simplified approach for the current implementation
+	// Create a minimal user object from claims for middleware purposes
+	// In production, you might want to cache full user data or make a database call
+	user := &UnifiedUser{
+		ID:         claims.UserID,
+		Email:      &claims.Email,
+		AdminLevel: claims.AdminLevel,
+	}
 
-	// TODO: Implement proper user retrieval from claims
-	// This would typically involve getting the user from the database using the UserID from claims
-	// For now, we'll return an error indicating this needs to be implemented with proper dependency injection
+	// Set default capabilities based on admin level if present
+	if claims.AdminLevel != nil {
+		capabilities := GetDefaultCapabilities(*claims.AdminLevel)
+		user.Capabilities = &capabilities
+	}
 
-	return nil, errors.NewAuthError("user retrieval from claims not implemented - requires repository access")
+	return user, nil
 }
 
 // Context helper functions
