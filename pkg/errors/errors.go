@@ -173,3 +173,54 @@ func NewSecurityError(message string) *UnifiedError {
 		ShouldAuditLog().
 		ShouldSendAlert()
 }
+
+// Wrap wraps an error with additional context
+func Wrap(err error, message string) error {
+	if err == nil {
+		return nil
+	}
+
+	// If it's already a UnifiedError, add context
+	if ue, ok := err.(*UnifiedError); ok {
+		ue.Message = fmt.Sprintf("%s: %s", message, ue.Message)
+		return ue
+	}
+
+	// Otherwise create a new UnifiedError
+	return &UnifiedError{
+		Code:      ErrInternalServer,
+		Message:   fmt.Sprintf("%s: %s", message, err.Error()),
+		Category:  CategoryServer,
+		Severity:  SeverityMedium,
+		Timestamp: time.Now().UTC(),
+		Details:   make(map[string]interface{}),
+	}
+}
+
+// NewNotFound creates a not found error
+func NewNotFound(message string) error {
+	return &UnifiedError{
+		Code:      ErrRecordNotFound,
+		Message:   message,
+		Category:  CategoryDB,
+		Severity:  SeverityLow,
+		Timestamp: time.Now().UTC(),
+		Details:   make(map[string]interface{}),
+	}
+}
+
+// IsNotFound checks if an error is a not found error
+func IsNotFound(err error) bool {
+	if ue, ok := err.(*UnifiedError); ok {
+		return ue.Code == ErrRecordNotFound
+	}
+	return false
+}
+
+// IsDuplicate checks if an error is a duplicate record error
+func IsDuplicate(err error) bool {
+	if ue, ok := err.(*UnifiedError); ok {
+		return ue.Code == ErrDuplicateRecord
+	}
+	return false
+}
