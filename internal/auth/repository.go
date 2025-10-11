@@ -72,6 +72,13 @@ type Repository interface {
 	GetRateLimit(ctx context.Context, key string) (*RateLimit, error)
 	UpsertRateLimit(ctx context.Context, rateLimit *RateLimit) error
 	CleanExpiredRateLimits(ctx context.Context) error
+
+	// Emergency access operations
+	CreateEmergencyAccess(ctx context.Context, access *EmergencyAccess) error
+	GetEmergencyAccessByID(ctx context.Context, id uuid.UUID) (*EmergencyAccess, error)
+	GetEmergencyAccessByToken(ctx context.Context, token string) (*EmergencyAccess, error)
+	UpdateEmergencyAccess(ctx context.Context, access *EmergencyAccess) error
+	ListEmergencyAccess(ctx context.Context, filter *EmergencyAccessFilter) ([]*EmergencyAccess, error)
 }
 
 // UserFilter represents filters for user queries
@@ -519,6 +526,7 @@ func (r *repository) ListAdmins(ctx context.Context, filter *AdminFilter) ([]*Un
 
 	return admins, nil
 }
+
 // Session operations
 
 // CreateSession creates a new admin session
@@ -619,8 +627,9 @@ func (r *repository) CleanExpiredSessions(ctx context.Context) error {
 
 	return nil
 
-	}
-	// API Key operations
+}
+
+// API Key operations
 
 // CreateAPIKey creates a new API key
 func (r *repository) CreateAPIKey(ctx context.Context, apiKey *APIKey) error {
@@ -726,6 +735,7 @@ func (r *repository) DeleteAPIKey(ctx context.Context, id uuid.UUID) error {
 
 	return nil
 }
+
 // OTP operations
 
 // CreateOTP creates a new OTP code
@@ -840,6 +850,7 @@ func (r *repository) CleanExpiredOTPs(ctx context.Context) error {
 
 	return nil
 }
+
 // Template operations
 
 // CreateTemplate creates a new template
@@ -1001,6 +1012,7 @@ func (r *repository) ListTemplates(ctx context.Context, filter *TemplateFilter) 
 
 	return templates, nil
 }
+
 // Audit operations
 
 // CreateAuditLog creates a new audit log entry
@@ -1235,6 +1247,7 @@ func (r *repository) ResolveSecurityEvent(ctx context.Context, id uuid.UUID, res
 
 	return nil
 }
+
 // Rate limiting operations
 
 // GetRateLimit retrieves a rate limit entry by key
@@ -1291,4 +1304,159 @@ func (r *repository) CleanExpiredRateLimits(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Emergency access operations
+
+// CreateEmergencyAccess creates a new emergency access entry
+func (r *repository) CreateEmergencyAccess(ctx context.Context, access *EmergencyAccess) error {
+	query := `
+		INSERT INTO emergency_access (
+			id, access_token, created_by, reason, admin_level, ip_restriction, expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+
+	_, err := r.db.Exec(ctx, query,
+		access.ID, access.AccessToken, access.CreatedBy, access.Reason,
+		access.AdminLevel, access.IPRestriction, access.ExpiresAt,
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to create emergency access")
+	}
+
+	return nil
+}
+
+// GetEmergencyAccessByID retrieves emergency access by ID
+func (r *repository) GetEmergencyAccessByID(ctx context.Context, id uuid.UUID) (*EmergencyAccess, error) {
+	query := `
+		SELECT id, access_token, created_by, reason, admin_level, ip_restriction,
+			   expires_at, used_at, used_by, revoked_at, revoked_by, created_at
+		FROM emergency_access WHERE id = $1`
+
+	var access EmergencyAccess
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&access.ID, &access.AccessToken, &access.CreatedBy, &access.Reason,
+		&access.AdminLevel, &access.IPRestriction, &access.ExpiresAt,
+		&access.UsedAt, &access.UsedBy, &access.RevokedAt, &access.RevokedBy,
+		&access.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errors.NewNotFound("emergency access not found")
+		}
+		return nil, errors.Wrap(err, "failed to get emergency access by ID")
+	}
+
+	return &access, nil
+}
+
+// GetEmergencyAccessByToken retrieves emergency access by token
+func (r *repository) GetEmergencyAccessByToken(ctx context.Context, token string) (*EmergencyAccess, error) {
+	query := `
+		SELECT id, access_token, created_by, reason, admin_level, ip_restriction,
+			   expires_at, used_at, used_by, revoked_at, revoked_by, created_at
+		FROM emergency_access WHERE access_token = $1`
+
+	var access EmergencyAccess
+	err := r.db.QueryRow(ctx, query, token).Scan(
+		&access.ID, &access.AccessToken, &access.CreatedBy, &access.Reason,
+		&access.AdminLevel, &access.IPRestriction, &access.ExpiresAt,
+		&access.UsedAt, &access.UsedBy, &access.RevokedAt, &access.RevokedBy,
+		&access.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errors.NewNotFound("emergency access not found")
+		}
+		return nil, errors.Wrap(err, "failed to get emergency access by token")
+	}
+
+	return &access, nil
+}
+
+// UpdateEmergencyAccess updates an emergency access entry
+func (r *repository) UpdateEmergencyAccess(ctx context.Context, access *EmergencyAccess) error {
+	query := `
+		UPDATE emergency_access SET
+			used_at = $2, used_by = $3, revoked_at = $4, revoked_by = $5
+		WHERE id = $1`
+
+	result, err := r.db.Exec(ctx, query,
+		access.ID, access.UsedAt, access.UsedBy, access.RevokedAt, access.RevokedBy,
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to update emergency access")
+	}
+
+	if result.RowsAffected() == 0 {
+		return errors.NewNotFound("emergency access not found")
+	}
+
+	return nil
+}
+
+// ListEmergencyAccess retrieves emergency access entries with filtering
+func (r *repository) ListEmergencyAccess(ctx context.Context, filter *EmergencyAccessFilter) ([]*EmergencyAccess, error) {
+	query := `
+		SELECT id, access_token, created_by, reason, admin_level, ip_restriction,
+			   expires_at, used_at, used_by, revoked_at, revoked_by, created_at
+		FROM emergency_access WHERE 1=1`
+
+	args := []interface{}{}
+	argCount := 0
+
+	if filter.CreatedBy != nil {
+		argCount++
+		query += fmt.Sprintf(" AND created_by = $%d", argCount)
+		args = append(args, *filter.CreatedBy)
+	}
+
+	if filter.Active != nil {
+		if *filter.Active {
+			query += " AND expires_at > NOW() AND revoked_at IS NULL"
+		} else {
+			query += " AND (expires_at <= NOW() OR revoked_at IS NOT NULL)"
+		}
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	if filter.Limit > 0 {
+		argCount++
+		query += fmt.Sprintf(" LIMIT $%d", argCount)
+		args = append(args, filter.Limit)
+	}
+
+	if filter.Offset > 0 {
+		argCount++
+		query += fmt.Sprintf(" OFFSET $%d", argCount)
+		args = append(args, filter.Offset)
+	}
+
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list emergency access")
+	}
+	defer rows.Close()
+
+	var accessList []*EmergencyAccess
+	for rows.Next() {
+		var access EmergencyAccess
+		err := rows.Scan(
+			&access.ID, &access.AccessToken, &access.CreatedBy, &access.Reason,
+			&access.AdminLevel, &access.IPRestriction, &access.ExpiresAt,
+			&access.UsedAt, &access.UsedBy, &access.RevokedAt, &access.RevokedBy,
+			&access.CreatedAt,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan emergency access")
+		}
+		accessList = append(accessList, &access)
+	}
+
+	return accessList, nil
 }

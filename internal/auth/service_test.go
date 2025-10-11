@@ -272,6 +272,41 @@ func (m *MockRepository) CleanExpiredRateLimits(ctx context.Context) error {
 	return args.Error(0)
 }
 
+// Emergency access operations
+func (m *MockRepository) CreateEmergencyAccess(ctx context.Context, access *EmergencyAccess) error {
+	args := m.Called(ctx, access)
+	return args.Error(0)
+}
+
+func (m *MockRepository) GetEmergencyAccessByID(ctx context.Context, id uuid.UUID) (*EmergencyAccess, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*EmergencyAccess), args.Error(1)
+}
+
+func (m *MockRepository) GetEmergencyAccessByToken(ctx context.Context, token string) (*EmergencyAccess, error) {
+	args := m.Called(ctx, token)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*EmergencyAccess), args.Error(1)
+}
+
+func (m *MockRepository) UpdateEmergencyAccess(ctx context.Context, access *EmergencyAccess) error {
+	args := m.Called(ctx, access)
+	return args.Error(0)
+}
+
+func (m *MockRepository) ListEmergencyAccess(ctx context.Context, filter *EmergencyAccessFilter) ([]*EmergencyAccess, error) {
+	args := m.Called(ctx, filter)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*EmergencyAccess), args.Error(1)
+}
+
 // Test helper functions
 func createTestConfig() *config.Config {
 	return &config.Config{
