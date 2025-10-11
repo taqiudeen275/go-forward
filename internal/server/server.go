@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/taqiudeen275/go-foward/internal/config"
 	"github.com/taqiudeen275/go-foward/internal/database"
+	"github.com/taqiudeen275/go-foward/internal/docs"
 	"github.com/taqiudeen275/go-foward/pkg/errors"
 	"github.com/taqiudeen275/go-foward/pkg/logger"
 	"github.com/taqiudeen275/go-foward/pkg/middleware"
@@ -117,6 +118,9 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 		log.Printf("Warning: Database connection failed: %v", err)
 	}
 
+	// Initialize Swagger documentation service
+	swaggerService := docs.NewSwaggerService(cfg)
+
 	// Health check endpoint with database status
 	router.GET("/health", func(c *gin.Context) {
 		health := gin.H{
@@ -145,6 +149,11 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 				"environment": cfg.Environment,
 			})
 		})
+
+		// Swagger documentation endpoints
+		api.GET("/swagger.json", swaggerService.ServeSwaggerJSON())
+		api.GET("/docs", swaggerService.ServeSwaggerUI())
+		api.GET("/docs/*any", swaggerService.ServeSwaggerUI())
 
 		// Error testing endpoints (development only)
 		if cfg.IsDevelopment() {
@@ -200,6 +209,11 @@ func setupRouter(cfg *config.Config) *gin.Engine {
 
 			c.JSON(http.StatusOK, health)
 		})
+
+		// Admin API documentation
+		admin.GET("/docs", swaggerService.ServeSwaggerUI())
+		admin.GET("/docs/*any", swaggerService.ServeSwaggerUI())
+		admin.GET("/swagger.json", swaggerService.ServeSwaggerJSON())
 	}
 
 	return router
