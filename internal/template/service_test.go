@@ -364,7 +364,7 @@ func TestGetDefaultTemplate(t *testing.T) {
 }
 
 func TestEmailService(t *testing.T) {
-	config := &config.EmailConfig{
+	emailConfig := &config.EmailConfig{
 		Provider:  "smtp",
 		SMTPHost:  "localhost",
 		SMTPPort:  587,
@@ -376,7 +376,7 @@ func TestEmailService(t *testing.T) {
 	}
 
 	renderer := NewRenderer()
-	service, err := NewEmailService(config, renderer)
+	service, err := NewEmailService(emailConfig, renderer)
 	require.NoError(t, err)
 
 	t.Run("ValidateProvider", func(t *testing.T) {
@@ -398,14 +398,14 @@ func TestEmailService(t *testing.T) {
 }
 
 func TestSMSService(t *testing.T) {
-	config := &config.SMSConfig{
+	smsConfig := &config.SMSConfig{
 		Provider: "arkesel",
 		APIKey:   "test-api-key",
 		From:     "TestApp",
 	}
 
 	renderer := NewRenderer()
-	service, err := NewSMSService(config, renderer)
+	service, err := NewSMSService(smsConfig, renderer)
 	require.NoError(t, err)
 
 	t.Run("ValidateProvider", func(t *testing.T) {
@@ -420,11 +420,11 @@ func TestSMSService(t *testing.T) {
 	})
 
 	t.Run("ValidateProvider_MissingConfig", func(t *testing.T) {
-		invalidConfig := &config.SMSConfig{
+		invalidSMSConfig := &config.SMSConfig{
 			Provider: "arkesel",
 		}
 
-		invalidService, err := NewSMSService(invalidConfig, renderer)
+		invalidService, err := NewSMSService(invalidSMSConfig, renderer)
 		require.NoError(t, err)
 
 		err = invalidService.ValidateProvider()
