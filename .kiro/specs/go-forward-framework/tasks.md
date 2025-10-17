@@ -424,15 +424,15 @@
     - Test configuration loading and validation
     - Test environment variable overrides
     - Test plugin registration and management
-    - _Requirements: 8.1, 8.2, 8.3_
+    - _Requirements: 14.1, 14.2, 14.3_
 
-- [x] 13. Create Next.js admin dashboard foundation
-
-
+- [ ] 13. Create Next.js admin dashboard foundation
 
 
 
-  - [x] 13.1 Set up Next.js project structure
+
+
+  - [ ] 13.1 Set up Next.js project structure
 
 
     - Initialize Next.js project with TypeScript
@@ -462,47 +462,350 @@
     - Test SQL editor functionality
     - _Requirements: 5.1, 5.2, 5.3_
 
-- [ ] 14. Complete admin dashboard features
-  - [ ] 14.1 Add data management interface
-    - Create data grid for viewing table contents
-    - Implement data editing with proper validation
-    - Add data filtering and search functionality
-    - _Requirements: 5.4_
+- [ ] 14. Implement Advanced Data Types and Relationships
+  - [ ] 14.1 Add support for table relationships
+    - Implement foreign key constraint creation and management
+    - Add one-to-many relationship support with proper referential integrity
+    - Create many-to-many relationship support with junction tables
+    - Add relationship validation and cascade operations
+    - _Requirements: 6.5, 6.6, 6.7, 6.9_
 
-  - [ ] 14.2 Implement user management
+  - [ ] 14.2 Implement rich text field support
+    - Add rich text field type with HTML content support
+    - Implement rich text validation and sanitization
+    - Create rich text editor integration for admin dashboard
+    - Add rich text field API serialization and deserialization
+    - _Requirements: 6.1_
+
+  - [ ] 14.3 Add file reference field support
+    - Implement file reference field type linking to storage system
+    - Add file metadata integration (size, type, upload info)
+    - Create file reference validation and integrity checking
+    - Add automatic file cleanup when references are removed
+    - _Requirements: 6.2, 7.6, 7.7_
+
+  - [ ] 14.4 Implement advanced data types (JSON, Arrays)
+    - Add JSON field support with validation and querying
+    - Implement array field support for basic and structured types
+    - Add data type validation and conversion utilities
+    - Create advanced data type API serialization
+    - _Requirements: 6.3, 6.4_
+
+  - [ ]* 14.5 Write advanced data types tests
+    - Test relationship creation and referential integrity
+    - Test rich text field validation and serialization
+    - Test file reference field functionality
+    - Test JSON and array field operations
+    - _Requirements: 6.1, 6.2, 6.3, 6.4_
+
+- [ ] 15. Enhanced API Services with Relationship Support
+  - [ ] 15.1 Add relationship querying to REST API
+    - Implement relationship expansion in API responses
+    - Add nested querying support for related records
+    - Create relationship filtering and sorting
+    - Add eager loading optimization for relationships
+    - _Requirements: 4.3, 4.6, 6.8_
+
+  - [ ] 15.2 Enhance API with advanced data type support
+    - Add rich text field API serialization with format options
+    - Implement file reference field URL generation and metadata
+    - Add JSON field querying and filtering capabilities
+    - Create array field manipulation and querying
+    - _Requirements: 4.7, 4.8, 6.1, 6.2_
+
+  - [ ] 15.3 Add relationship-aware security controls
+    - Implement relationship-based access control
+    - Add cascade security checking for related records
+    - Create relationship-aware field-level permissions
+    - Add relationship validation in security policies
+    - _Requirements: 4.6, 12.2, 12.6_
+
+  - [ ]* 15.4 Write enhanced API tests
+    - Test relationship expansion and nested queries
+    - Test advanced data type API operations
+    - Test relationship-aware security controls
+    - Test file reference and rich text API functionality
+    - _Requirements: 4.3, 4.6, 4.7, 4.8_
+
+- [ ] 16. Complete admin dashboard features
+  - [ ] 16.1 Add advanced data management interface
+    - Create data grid with relationship display and editing
+    - Implement rich text editor for rich text fields
+    - Add file upload and management for file reference fields
+    - Create JSON and array field editors with validation
+    - _Requirements: 5.4, 6.1, 6.2_
+
+  - [ ] 16.2 Implement relationship management interface
+    - Create relationship visualization and editing tools
+    - Add foreign key constraint management interface
+    - Implement many-to-many relationship editor
+    - Create relationship integrity checking and validation
+    - _Requirements: 3.5, 6.5, 6.6, 6.7_
+
+  - [ ] 16.3 Add user management and system monitoring
     - Create user listing and management pages
     - Add user role and permission management
     - Implement user activity monitoring
-    - _Requirements: 5.5_
+    - Create system metrics dashboard and log viewing
+    - _Requirements: 5.5, 5.6_
 
-  - [ ] 14.3 Add system monitoring and logs
-    - Create system metrics dashboard
-    - Implement log viewing and filtering
-    - Add real-time system status monitoring
-    - _Requirements: 5.6_
+  - [ ]* 16.4 Write dashboard feature unit tests
+    - Test advanced data management interface components
+    - Test relationship management functionality
+    - Test user management and monitoring features
+    - Test rich text and file reference field editors
+    - _Requirements: 5.4, 5.5, 5.6, 6.1, 6.2_
 
-  - [ ]* 14.4 Write dashboard feature unit tests
-    - Test data management interface components
-    - Test user management functionality
-    - Test monitoring and logging features
-    - _Requirements: 5.4, 5.5, 5.6_
+- [ ] 17. Implement Admin Role Management and Security
+  - [ ] 15.1 Extend user model with admin capabilities
+    - Add admin_level, capabilities, and assigned_tables columns to users table
+    - Implement AdminLevel enum and AdminCapabilities struct
+    - Create admin role assignment and validation logic
+    - Add admin role checking middleware
+    - _Requirements: 9.1, 9.2, 9.6_
 
-- [ ] 15. Final integration and testing
-  - [ ] 15.1 Complete end-to-end integration
-    - Connect all services through the API gateway
-    - Implement proper error handling across all components
-    - Add comprehensive logging and monitoring
-    - _Requirements: All requirements_
+  - [ ] 15.2 Implement hierarchical admin permissions
+    - Create role-based permission checking system
+    - Implement capability-based access control
+    - Add admin role inheritance and validation
+    - Create admin promotion and demotion functionality
+    - _Requirements: 8.2, 8.3, 8.4, 8.5_
 
-  - [ ] 15.2 Create example applications and documentation
-    - Build example client applications using the framework
-    - Create comprehensive API documentation
-    - Add deployment guides and best practices
-    - _Requirements: 8.5, 8.6_
+  - [ ] 15.3 Add admin session management
+    - Implement enhanced admin session tracking
+    - Add session-based capability caching
+    - Create admin session timeout and security controls
+    - Add concurrent session management
+    - _Requirements: 8.6, 9.3_
 
-  - [ ]* 15.3 Write comprehensive integration tests
-    - Test complete user authentication flows
-    - Test database operations through API endpoints
-    - Test real-time functionality end-to-end
-    - Test file storage operations
-    - _Requirements: All requirements_
+  - [ ]* 15.4 Write admin role management tests
+    - Test admin role assignment and validation
+    - Test hierarchical permission checking
+    - Test admin session management
+    - Test role-based access control
+    - _Requirements: 8.1, 8.2, 8.3, 8.6_
+
+- [ ] 18. Implement Enhanced Authentication and Security
+  - [ ] 16.1 Add multi-factor authentication (MFA)
+    - Implement TOTP (Time-based One-Time Password) support
+    - Add backup codes generation and validation
+    - Create MFA setup and verification flows
+    - Add MFA requirement based on admin roles
+    - _Requirements: 9.1, 9.2_
+
+  - [ ] 16.2 Implement security monitoring and account lockout
+    - Add failed login attempt tracking
+    - Implement account lockout after failed attempts
+    - Create suspicious activity detection
+    - Add security event logging and alerting
+    - _Requirements: 9.7, 10.3_
+
+  - [ ] 16.3 Add API key management
+    - Implement API key generation and validation
+    - Add scoped permissions for API keys
+    - Create API key expiration and rotation
+    - Add API key usage tracking and monitoring
+    - _Requirements: 9.5_
+
+  - [ ]* 16.4 Write enhanced authentication tests
+    - Test MFA setup and validation flows
+    - Test security monitoring and lockout mechanisms
+    - Test API key management functionality
+    - Test enhanced session security
+    - _Requirements: 9.1, 9.2, 9.5, 9.7_
+
+- [ ] 19. Implement Audit Logging and Security Monitoring
+  - [ ] 17.1 Create comprehensive audit logging system
+    - Implement audit_logs table and logging service
+    - Add structured logging for all admin actions
+    - Create security event categorization and severity levels
+    - Add audit log retention and archival policies
+    - _Requirements: 10.1, 10.2, 10.6_
+
+  - [ ] 17.2 Add security event detection and alerting
+    - Implement security event monitoring service
+    - Create pattern-based threat detection
+    - Add real-time security alerts and notifications
+    - Create security dashboard for monitoring
+    - _Requirements: 10.3, 10.7_
+
+  - [ ] 17.3 Create compliance reporting system
+    - Implement audit log querying and filtering
+    - Add compliance report generation
+    - Create audit trail export functionality
+    - Add automated compliance checking
+    - _Requirements: 10.4, 10.5_
+
+  - [ ]* 17.4 Write audit and monitoring tests
+    - Test audit log completeness and accuracy
+    - Test security event detection algorithms
+    - Test compliance report generation
+    - Test audit log retention and archival
+    - _Requirements: 10.1, 10.2, 10.4_
+
+- [ ] 20. Implement Table-Level Security Configuration
+  - [ ] 18.1 Create table security configuration system
+    - Implement TableSecurityConfig model and storage
+    - Add table-level authentication and authorization controls
+    - Create field-level permission management
+    - Add ownership-based access filtering
+    - _Requirements: 11.1, 11.2, 11.4_
+
+  - [ ] 18.2 Implement API security enforcement
+    - Add table security middleware to REST API service
+    - Implement role-based endpoint access control
+    - Create custom filter injection for SQL queries
+    - Add field-level read/write restrictions
+    - _Requirements: 11.2, 11.5, 11.6_
+
+  - [ ] 18.3 Add security policy validation
+    - Create security configuration validation
+    - Implement conflict detection for security policies
+    - Add security policy templates and presets
+    - Create security configuration UI components
+    - _Requirements: 11.3, 11.7_
+
+  - [ ]* 18.4 Write table security tests
+    - Test table security configuration management
+    - Test API security enforcement
+    - Test field-level permission controls
+    - Test ownership filtering and validation
+    - _Requirements: 11.1, 11.2, 11.5_
+
+- [ ] 21. Implement CLI-Based Admin Management
+  - [ ] 19.1 Create CLI admin management commands
+    - Implement create-system-admin CLI command
+    - Add promote-admin and list-admins commands
+    - Create environment detection and validation
+    - Add production-mode security requirements
+    - _Requirements: 12.1, 12.2, 12.5, 12.6_
+
+  - [ ] 19.2 Add bootstrap and deployment commands
+    - Implement framework initialization commands
+    - Add security policy setup and validation
+    - Create deployment validation and health checks
+    - Add emergency access creation and management
+    - _Requirements: 12.3, 12.4_
+
+  - [ ] 19.3 Implement environment-aware security policies
+    - Add development vs production security modes
+    - Create environment-specific validation rules
+    - Implement stricter security for production deployments
+    - Add configuration backup and restore
+    - _Requirements: 12.2, 12.6_
+
+  - [ ]* 19.4 Write CLI admin management tests
+    - Test CLI admin creation and management
+    - Test environment detection and validation
+    - Test bootstrap and deployment commands
+    - Test emergency access procedures
+    - _Requirements: 12.1, 12.3, 12.4_
+
+- [ ] 22. Enhanced Database Security and SQL Execution
+  - [ ] 20.1 Implement SQL execution security
+    - Add SQL query validation and sanitization
+    - Implement dangerous operation detection
+    - Create query execution monitoring and limits
+    - Add comprehensive SQL audit logging
+    - _Requirements: 3.2, 3.6, 10.1_
+
+  - [ ] 20.2 Enhance database meta service security
+    - Add admin role checking to database operations
+    - Implement secure SQL execution with user context
+    - Create query impact assessment
+    - Add database operation audit trails
+    - _Requirements: 3.2, 8.2, 10.1_
+
+  - [ ] 20.3 Implement Row Level Security (RLS) management
+    - Add RLS policy creation and management
+    - Implement automatic RLS policy generation from table configs
+    - Create RLS policy testing and validation
+    - Add user context setting for RLS evaluation
+    - _Requirements: 2.3, 2.4, 11.4_
+
+  - [ ]* 20.4 Write database security tests
+    - Test SQL validation and sanitization
+    - Test dangerous operation detection
+    - Test RLS policy enforcement
+    - Test database operation audit logging
+    - _Requirements: 2.3, 3.2, 10.1_
+
+- [ ] 23. Update Admin Dashboard with Security Features
+  - [ ] 21.1 Add admin role management interface
+    - Create admin user management pages
+    - Implement role assignment and permission editing
+    - Add admin hierarchy visualization
+    - Create admin activity monitoring dashboard
+    - _Requirements: 8.1, 8.2, 10.3_
+
+  - [ ] 21.2 Implement security monitoring dashboard
+    - Create security events monitoring interface
+    - Add audit log viewing and filtering
+    - Implement security alerts and notifications
+    - Create compliance reporting interface
+    - _Requirements: 10.3, 10.4, 10.5_
+
+  - [ ] 21.3 Add table security configuration interface
+    - Create table security policy editor
+    - Implement field-level permission management UI
+    - Add security policy templates and wizards
+    - Create security configuration validation feedback
+    - _Requirements: 11.1, 11.3, 11.7_
+
+  - [ ]* 21.4 Write security dashboard tests
+    - Test admin role management interface
+    - Test security monitoring dashboard
+    - Test table security configuration UI
+    - Test security policy validation
+    - _Requirements: 8.1, 10.3, 11.1_
+
+- [ ] 24. Migration System Enhancement
+  - [ ] 22.1 Replace current migrations with comprehensive security schema
+    - Replace simple user table with enhanced security schema
+    - Add admin roles, capabilities, and security tables
+    - Implement audit logging and security event tables
+    - Add MFA, API keys, and session management tables
+    - _Requirements: 8.1, 9.1, 10.1_
+
+  - [ ] 22.2 Create security-focused migration templates
+    - Add migration templates for common security patterns
+    - Create RLS policy migration helpers
+    - Implement security index and constraint templates
+    - Add data migration utilities for security upgrades
+    - _Requirements: 7.1, 8.1, 10.1_
+
+  - [ ] 22.3 Add migration security validation
+    - Implement security impact assessment for migrations
+    - Add migration rollback safety checks
+    - Create migration audit trail and logging
+    - Add production migration approval workflows
+    - _Requirements: 7.4, 7.6, 10.1_
+
+  - [ ]* 22.4 Write enhanced migration tests
+    - Test comprehensive security schema migrations
+    - Test migration security validation
+    - Test RLS policy migration helpers
+    - Test migration audit and rollback functionality
+    - _Requirements: 7.1, 7.4, 10.1_
+
+- [ ] 25. Final Security Integration and Testing
+  - [ ] 23.1 Complete end-to-end security integration
+    - Integrate all security services through the API gateway
+    - Implement comprehensive security middleware stack
+    - Add security-aware error handling across all components
+    - Create security configuration management system
+    - _Requirements: All security requirements_
+
+  - [ ] 23.2 Create security documentation and guides
+    - Write comprehensive security configuration guide
+    - Create admin user training materials
+    - Document security best practices and recommendations
+    - Build troubleshooting guide for security issues
+    - _Requirements: 13.5, 13.6_
+
+  - [ ]* 23.3 Write comprehensive security integration tests
+    - Test complete admin authentication and authorization flows
+    - Test table-level security enforcement end-to-end
+    - Test audit logging and security monitoring
+    - Test CLI admin management and bootstrap procedures
+    - _Requirements: All security requirements_
