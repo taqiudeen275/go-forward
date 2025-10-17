@@ -32,6 +32,7 @@ type Claims struct {
 	Email     string                 `json:"email"`
 	Username  string                 `json:"username"`
 	Phone     string                 `json:"phone"`
+	SessionID string                 `json:"session_id"`
 	Metadata  map[string]interface{} `json:"metadata"`
 	TokenType string                 `json:"token_type"` // "access" or "refresh"
 	jwt.RegisteredClaims

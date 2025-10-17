@@ -423,3 +423,233 @@ func (s *Service) UpdateSecurityConfig(ctx context.Context, updates map[string]i
 
 	return nil
 }
+
+// GetSanitizedConfig returns configuration with sensitive values masked
+func (s *Service) GetSanitizedConfig() (map[string]interface{}, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	// Create a sanitized copy of the configuration
+	sanitized := map[string]interface{}{
+		"server": map[string]interface{}{
+			"host":          s.config.Server.Host,
+			"port":          s.config.Server.Port,
+			"log_level":     s.config.Server.LogLevel,
+			"read_timeout":  s.config.Server.ReadTimeout,
+			"write_timeout": s.config.Server.WriteTimeout,
+			"cors":          s.config.Server.CORS,
+			"rate_limit":    s.config.Server.RateLimit,
+		},
+		"database": map[string]interface{}{
+			"host":                 s.config.Database.Host,
+			"port":                 s.config.Database.Port,
+			"name":                 s.config.Database.Name,
+			"user":                 s.config.Database.User,
+			"password":             "***REDACTED***",
+			"ssl_mode":             s.config.Database.SSLMode,
+			"max_connections":      s.config.Database.MaxConns,
+			"max_idle_connections": s.config.Database.MaxIdleConns,
+			"max_lifetime":         s.config.Database.MaxLifetime,
+		},
+		"auth": map[string]interface{}{
+			"jwt_secret":           "***REDACTED***",
+			"jwt_expiration":       s.config.Auth.JWTExpiration,
+			"refresh_expiration":   s.config.Auth.RefreshExpiration,
+			"access_token_expiry":  s.config.Auth.AccessTokenExpiry,
+			"refresh_token_expiry": s.config.Auth.RefreshTokenExpiry,
+			"password_min_length":  s.config.Auth.PasswordMinLength,
+			"max_login_attempts":   s.config.Auth.MaxLoginAttempts,
+			"session_timeout":      s.config.Auth.SessionTimeout,
+			"enable_email_auth":    s.config.Auth.EnableEmailAuth,
+			"enable_phone_auth":    s.config.Auth.EnablePhoneAuth,
+			"mfa":                  s.config.Auth.MFA,
+			"account_lockout":      s.config.Auth.AccountLockout,
+		},
+		"logging": map[string]interface{}{
+			"level":       s.config.Logging.Level,
+			"format":      s.config.Logging.Format,
+			"output":      s.config.Logging.Output,
+			"file_path":   s.config.Logging.FilePath,
+			"max_size":    s.config.Logging.MaxSize,
+			"max_backups": s.config.Logging.MaxBackups,
+			"max_age":     s.config.Logging.MaxAge,
+		},
+	}
+
+	return sanitized, nil
+}
+
+// GetSection returns a specific configuration section
+func (s *Service) GetSection(section string) (interface{}, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	switch section {
+	case "server":
+		return s.config.Server, nil
+	case "database":
+		// Return database config with password redacted
+		dbConfig := s.config.Database
+		dbConfig.Password = "***REDACTED***"
+		return dbConfig, nil
+	case "auth":
+		// Return auth config with secret redacted
+		authConfig := s.config.Auth
+		authConfig.JWTSecret = "***REDACTED***"
+		return authConfig, nil
+	case "storage":
+		return s.config.Storage, nil
+	case "realtime":
+		return s.config.Realtime, nil
+	case "dashboard":
+		return s.config.Dashboard, nil
+	case "logging":
+		return s.config.Logging, nil
+	case "plugins":
+		return s.config.Plugins, nil
+	default:
+		return nil, fmt.Errorf("unknown configuration section: %s", section)
+	}
+}
+
+// CreateBackup creates a backup of the current configuration
+func (s *Service) CreateBackup(name, description string) (map[string]interface{}, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	backup := map[string]interface{}{
+		"name":        name,
+		"description": description,
+		"created_at":  time.Now(),
+		"version":     "2.1.0",
+		"config":      s.config,
+	}
+
+	return backup, nil
+}
+
+// UpdateSection updates a specific configuration section
+func (s *Service) UpdateSection(ctx context.Context, section string, updates map[string]interface{}) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	switch section {
+	case "server":
+		return s.updateServerSection(updates)
+	case "database":
+		return s.updateDatabaseSection(updates)
+	case "auth":
+		return s.updateAuthSection(updates)
+	case "logging":
+		return s.updateLoggingSection(updates)
+	default:
+		return fmt.Errorf("unsupported configuration section: %s", section)
+	}
+}
+
+// updateServerSection updates server configuration section
+func (s *Service) updateServerSection(updates map[string]interface{}) error {
+	for key, value := range updates {
+		switch key {
+		case "host":
+			if host, ok := value.(string); ok {
+				s.config.Server.Host = host
+			} else {
+				return fmt.Errorf("invalid type for server.host")
+			}
+		case "port":
+			if port, ok := value.(int); ok {
+				if port <= 0 || port > 65535 {
+					return fmt.Errorf("invalid port number: %d", port)
+				}
+				s.config.Server.Port = port
+			} else {
+				return fmt.Errorf("invalid type for server.port")
+			}
+		case "log_level":
+			if logLevel, ok := value.(string); ok {
+				s.config.Server.LogLevel = logLevel
+			} else {
+				return fmt.Errorf("invalid type for server.log_level")
+			}
+		default:
+			return fmt.Errorf("unknown server config key: %s", key)
+		}
+	}
+	return nil
+}
+
+// updateDatabaseSection updates database configuration section
+func (s *Service) updateDatabaseSection(updates map[string]interface{}) error {
+	for key, value := range updates {
+		switch key {
+		case "max_connections":
+			if maxConns, ok := value.(int); ok {
+				if maxConns <= 0 {
+					return fmt.Errorf("max connections must be positive")
+				}
+				s.config.Database.MaxConns = maxConns
+			} else {
+				return fmt.Errorf("invalid type for database.max_connections")
+			}
+		case "max_idle_connections":
+			if maxIdleConns, ok := value.(int); ok {
+				if maxIdleConns < 0 {
+					return fmt.Errorf("max idle connections cannot be negative")
+				}
+				s.config.Database.MaxIdleConns = maxIdleConns
+			} else {
+				return fmt.Errorf("invalid type for database.max_idle_connections")
+			}
+		default:
+			return fmt.Errorf("unknown database config key: %s", key)
+		}
+	}
+	return nil
+}
+
+// updateAuthSection updates authentication configuration section
+func (s *Service) updateAuthSection(updates map[string]interface{}) error {
+	for key, value := range updates {
+		switch key {
+		case "max_login_attempts":
+			if attempts, ok := value.(int); ok && attempts > 0 {
+				s.config.Auth.MaxLoginAttempts = attempts
+			} else {
+				return fmt.Errorf("invalid max_login_attempts")
+			}
+		case "password_min_length":
+			if length, ok := value.(int); ok && length >= 8 {
+				s.config.Auth.PasswordMinLength = length
+			} else {
+				return fmt.Errorf("invalid password_min_length")
+			}
+		default:
+			return fmt.Errorf("unknown auth config key: %s", key)
+		}
+	}
+	return nil
+}
+
+// updateLoggingSection updates logging configuration section
+func (s *Service) updateLoggingSection(updates map[string]interface{}) error {
+	for key, value := range updates {
+		switch key {
+		case "level":
+			if level, ok := value.(string); ok {
+				s.config.Logging.Level = level
+			} else {
+				return fmt.Errorf("invalid type for logging.level")
+			}
+		case "format":
+			if format, ok := value.(string); ok {
+				s.config.Logging.Format = format
+			} else {
+				return fmt.Errorf("invalid type for logging.format")
+			}
+		default:
+			return fmt.Errorf("unknown logging config key: %s", key)
+		}
+	}
+	return nil
+}

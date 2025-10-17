@@ -14,17 +14,25 @@ type MockRBACEngine struct {
 	mock.Mock
 }
 
-func (m *MockRBACEngine) GetUserRoles(ctx context.Context, userID string) ([]*AdminRole, error) {
+func (m *MockRBACEngine) GetUserRoles(ctx context.Context, userID string) ([]UserAdminRole, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]*AdminRole), args.Error(1)
+	return args.Get(0).([]UserAdminRole), args.Error(1)
 }
 
 func (m *MockRBACEngine) HasRole(ctx context.Context, userID, roleName string) (bool, error) {
 	args := m.Called(ctx, userID, roleName)
 	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockRBACEngine) GetRoleByID(ctx context.Context, roleID string) (*AdminRole, error) {
+	args := m.Called(ctx, roleID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*AdminRole), args.Error(1)
 }
 
 func (m *MockRBACEngine) GetHighestRole(ctx context.Context, userID string) (*AdminRole, error) {
@@ -81,8 +89,8 @@ func (m *MockRBACEngine) GetUserAdminLevel(ctx context.Context, userID string) (
 	return args.Int(0), args.Error(1)
 }
 
-func (m *MockRBACEngine) HasCapability(ctx context.Context, userID, capability string) (bool, error) {
-	args := m.Called(ctx, userID, capability)
+func (m *MockRBACEngine) HasCapability(ctx context.Context, userID, capability, resource string) (bool, error) {
+	args := m.Called(ctx, userID, capability, resource)
 	return args.Bool(0), args.Error(1)
 }
 

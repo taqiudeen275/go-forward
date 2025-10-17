@@ -147,9 +147,17 @@ func (a *AdminAPIIntegration) requireAuthentication() gin.HandlerFunc {
 		c.Set("session_id", claims.SessionID)
 
 		// Get user roles and set in context
-		if roles, err := a.rbacEngine.GetUserRoles(c.Request.Context(), claims.UserID); err == nil && len(roles) > 0 {
-			c.Set("admin_roles", roles)
-			if highest := a.getHighestRole(roles); highest != nil {
+		if userRoles, err := a.rbacEngine.GetUserRoles(c.Request.Context(), claims.UserID); err == nil && len(userRoles) > 0 {
+			// Convert UserAdminRole to AdminRole objects
+			var adminRoles []*auth.AdminRole
+			for _, userRole := range userRoles {
+				if role, err := a.rbacEngine.GetRoleByID(c.Request.Context(), userRole.RoleID); err == nil {
+					adminRoles = append(adminRoles, role)
+				}
+			}
+
+			c.Set("admin_roles", adminRoles)
+			if highest := a.getHighestRole(adminRoles); highest != nil {
 				c.Set("admin_role", highest.Name)
 				c.Set("admin_role_id", highest.ID)
 			}

@@ -13,6 +13,7 @@ import (
 type RBACEngine interface {
 	// Role management
 	GetUserRoles(ctx context.Context, userID string) ([]UserAdminRole, error)
+	GetRoleByID(ctx context.Context, roleID string) (*AdminRole, error)
 	HasRole(ctx context.Context, userID string, roleName string) (bool, error)
 	GetHighestRole(ctx context.Context, userID string) (*AdminRole, error)
 	GrantRole(ctx context.Context, userID string, roleID string, grantedBy string) error
@@ -532,6 +533,45 @@ func (r *rbacEngine) HasCapability(ctx context.Context, userID string, capabilit
 	}
 
 	return hasCapability, nil
+}
+
+// GetRoleByID retrieves an admin role by its ID
+func (r *rbacEngine) GetRoleByID(ctx context.Context, roleID string) (*AdminRole, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			description,
+			level,
+			permissions,
+			is_active,
+			created_at,
+			updated_at
+		FROM admin_roles
+		WHERE id = $1 AND is_active = true
+	`
+
+	var role AdminRole
+
+	err := r.db.QueryRow(ctx, query, roleID).Scan(
+		&role.ID,
+		&role.Name,
+		&role.Description,
+		&role.Level,
+		&role.Permissions,
+		&role.IsActive,
+		&role.CreatedAt,
+		&role.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("role with ID %s not found", roleID)
+		}
+		return nil, fmt.Errorf("failed to get role by ID: %w", err)
+	}
+
+	return &role, nil
 }
 
 // GetUserCapabilities returns all capabilities for a user

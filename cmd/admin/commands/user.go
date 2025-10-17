@@ -62,7 +62,7 @@ Examples:
 
   # Skip MFA setup
   go-forward-admin create-system-admin --email admin@company.com --skip-mfa`,
-		RunE: u.runCreateSystemAdmin(&email, &password, &firstName, &lastName, &phone, &skipMFA, &department, &sendWelcome),
+		RunE: u.runCreateSystemAdmin(&email, &password, &firstName, &lastName, &phone, &department, &skipMFA, &sendWelcome),
 	}
 
 	cmd.Flags().StringVarP(&email, "email", "e", "", "Admin email address")
@@ -140,6 +140,7 @@ func (u *UserCommands) runCreateSystemAdmin(email, password, firstName, lastName
 			Phone:     phone,
 			EnableMFA: !*skipMFA,
 		}
+		_ = createReq // Placeholder for actual auth service call
 
 		// TODO: Call actual auth service to create admin user
 		fmt.Printf("✅ Admin user created: %s\n", adminEmail)

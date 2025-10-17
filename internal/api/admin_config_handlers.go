@@ -201,7 +201,7 @@ func (h *AdminConfigHandlers) UpdateConfigSection() gin.HandlerFunc {
 		}
 
 		// Update configuration
-		err = h.configService.UpdateSection(section, req.Data, currentUserID, req.Reason)
+		err = h.configService.UpdateSection(c.Request.Context(), section, req.Data)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to update configuration",

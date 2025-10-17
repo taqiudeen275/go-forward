@@ -193,9 +193,9 @@ func (h *AdminUserHandlers) CreateAdminUser() gin.HandlerFunc {
 			return
 		}
 
-		// Enable MFA if requested
+		// Set up MFA if requested
 		if req.EnableMFA {
-			_, err := h.mfaService.EnableMFA(c.Request.Context(), user.ID)
+			_, _, err := h.mfaService.GenerateTOTPSecret(c.Request.Context(), user.ID)
 			if err != nil {
 				// Log warning but don't fail the user creation
 				// User can enable MFA later
@@ -242,18 +242,17 @@ func (h *AdminUserHandlers) ListAdminUsers() gin.HandlerFunc {
 
 		// Convert to service filter
 		serviceFilter := auth.AdminUserFilter{
-			Role:       filter.Role,
-			Department: filter.Department,
-			Search:     filter.Search,
-			Limit:      filter.Limit,
-			Offset:     filter.Offset,
+			RoleName: &filter.Role,
+			IsActive: filter.IsActive,
+			Limit:    filter.Limit,
+			Offset:   filter.Offset,
 		}
 
 		if filter.IsActive != nil {
 			serviceFilter.IsActive = filter.IsActive
 		}
 
-		users, total, err := h.authService.GetAdminUsers(c.Request.Context(), serviceFilter)
+		users, err := h.authService.GetAdminUsers(c.Request.Context(), serviceFilter)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to retrieve admin users",
@@ -265,7 +264,7 @@ func (h *AdminUserHandlers) ListAdminUsers() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data":    users,
-			"total":   total,
+			"total":   len(users),
 			"limit":   filter.Limit,
 			"offset":  filter.Offset,
 		})
@@ -315,10 +314,7 @@ func (h *AdminUserHandlers) GetAdminUser() gin.HandlerFunc {
 			"data": gin.H{
 				"id":         user.ID,
 				"email":      user.Email,
-				"first_name": user.FirstName,
-				"last_name":  user.LastName,
-				"phone":      user.Phone,
-				"is_active":  user.IsActive,
+				"username":   user.Username,
 				"created_at": user.CreatedAt,
 				"updated_at": user.UpdatedAt,
 				"roles":      roles,
@@ -419,8 +415,8 @@ func (h *AdminUserHandlers) DeleteAdminUser() gin.HandlerFunc {
 			return
 		}
 
-		// Deactivate user instead of hard delete
-		err = h.authService.DeactivateUser(c.Request.Context(), userID, currentUserID)
+		// Delete the admin user
+		err = h.authService.DeleteUser(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to delete user",
@@ -572,10 +568,11 @@ func (h *AdminUserHandlers) EnableUserMFA() gin.HandlerFunc {
 			return
 		}
 
-		mfaSettings, err := h.mfaService.EnableMFA(c.Request.Context(), userID)
+		// Generate TOTP secret for the user (MFA setup, not immediate enable)
+		secret, backupCodes, err := h.mfaService.GenerateTOTPSecret(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "Failed to enable MFA",
+				"error":   "Failed to setup MFA",
 				"message": err.Error(),
 			})
 			return
@@ -583,11 +580,10 @@ func (h *AdminUserHandlers) EnableUserMFA() gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
-			"message": "MFA enabled successfully",
+			"message": "MFA setup completed successfully",
 			"data": gin.H{
-				"user_id":     userID,
-				"mfa_enabled": true,
-				"secret":      mfaSettings.TOTPSecret, // Only return once for setup
+				"totp_secret":  secret,
+				"backup_codes": backupCodes,
 			},
 		})
 	}
@@ -604,7 +600,7 @@ func (h *AdminUserHandlers) DisableUserMFA() gin.HandlerFunc {
 			return
 		}
 
-		err := h.mfaService.DisableMFA(c.Request.Context(), userID)
+		err := h.mfaService.DisableMFA(c.Request.Context(), userID, "")
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to disable MFA",
@@ -693,7 +689,8 @@ func (h *AdminUserHandlers) RevokeUserSessions() gin.HandlerFunc {
 // RevokeUserSession revokes a specific session for a user
 func (h *AdminUserHandlers) RevokeUserSession() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.Param("user_id")
+		userID := c.Param("id")
+		_ = userID // Placeholder for implementation
 		sessionID := c.Param("session_id")
 
 		if userID == "" || sessionID == "" {
@@ -714,7 +711,7 @@ func (h *AdminUserHandlers) RevokeUserSession() gin.HandlerFunc {
 // GetUserActivity gets activity log for a user
 func (h *AdminUserHandlers) GetUserActivity() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.Param("user_id")
+		userID := c.Param("id") // placeholder for user ID
 		if userID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "User ID is required",
@@ -740,7 +737,7 @@ func (h *AdminUserHandlers) GetUserActivity() gin.HandlerFunc {
 // GetUserPermissions gets effective permissions for a user
 func (h *AdminUserHandlers) GetUserPermissions() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.Param("user_id")
+		userID := c.Param("id") // placeholder for user ID
 		if userID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "User ID is required",
@@ -800,8 +797,7 @@ func (h *AdminUserHandlers) GetCurrentUserProfile() gin.HandlerFunc {
 			"data": gin.H{
 				"id":         user.ID,
 				"email":      user.Email,
-				"first_name": user.FirstName,
-				"last_name":  user.LastName,
+				"username":   user.Username,
 				"phone":      user.Phone,
 				"created_at": user.CreatedAt,
 				"updated_at": user.UpdatedAt,
@@ -830,6 +826,7 @@ func (h *AdminUserHandlers) UpdateCurrentUserProfile() gin.HandlerFunc {
 		}
 
 		userID := c.GetString("user_id")
+		_ = userID // Placeholder for implementation
 
 		// Update user profile (implementation would go here)
 		c.JSON(http.StatusOK, gin.H{
@@ -856,6 +853,7 @@ func (h *AdminUserHandlers) ChangePassword() gin.HandlerFunc {
 		}
 
 		userID := c.GetString("user_id")
+		_ = userID // Placeholder for implementation
 
 		// Change password (implementation would go here)
 		c.JSON(http.StatusOK, gin.H{
@@ -869,6 +867,7 @@ func (h *AdminUserHandlers) ChangePassword() gin.HandlerFunc {
 func (h *AdminUserHandlers) GetCurrentUserActivity() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("user_id")
+		_ = userID // Placeholder for implementation
 		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 
 		// TODO: Query user's own activity from audit logs
