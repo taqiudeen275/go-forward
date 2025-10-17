@@ -50,12 +50,18 @@ type AuthConfig struct {
 	JWTSecret           string                    `yaml:"jwt_secret"`
 	JWTExpiration       time.Duration             `yaml:"jwt_expiration"`
 	RefreshExpiration   time.Duration             `yaml:"refresh_expiration"`
+	AccessTokenExpiry   time.Duration             `yaml:"access_token_expiry"`
+	RefreshTokenExpiry  time.Duration             `yaml:"refresh_token_expiry"`
 	OTPExpiration       time.Duration             `yaml:"otp_expiration"`
 	PasswordMinLength   int                       `yaml:"password_min_length"`
+	MaxLoginAttempts    int                       `yaml:"max_login_attempts"`
+	SessionTimeout      time.Duration             `yaml:"session_timeout"`
 	EnableEmailAuth     bool                      `yaml:"enable_email_auth"`
 	EnablePhoneAuth     bool                      `yaml:"enable_phone_auth"`
 	EnableUsernameAuth  bool                      `yaml:"enable_username_auth"`
 	RequireVerification bool                      `yaml:"require_verification"`
+	MFA                 MFAConfig                 `yaml:"mfa"`
+	AccountLockout      AccountLockoutConfig      `yaml:"account_lockout"`
 	SMTP                SMTPConfig                `yaml:"smtp"`
 	SMS                 SMSConfig                 `yaml:"sms"`
 	CustomProviders     CustomAuthProvidersConfig `yaml:"custom_providers"`
@@ -220,6 +226,25 @@ type SocialProviderConfig struct {
 	RequestTimeout  time.Duration `yaml:"request_timeout"`
 	AllowSignup     bool          `yaml:"allow_signup"`
 	RequireVerified bool          `yaml:"require_verified"`
+}
+
+// MFAConfig represents multi-factor authentication configuration
+type MFAConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	Issuer        string        `yaml:"issuer"`
+	TOTPWindow    int           `yaml:"totp_window"`
+	BackupCodes   bool          `yaml:"backup_codes"`
+	RequiredRoles []string      `yaml:"required_roles"`
+	GracePeriod   time.Duration `yaml:"grace_period"`
+}
+
+// AccountLockoutConfig represents account lockout configuration
+type AccountLockoutConfig struct {
+	Enabled         bool          `yaml:"enabled"`
+	MaxAttempts     int           `yaml:"max_attempts"`
+	LockoutDuration time.Duration `yaml:"lockout_duration"`
+	ResetOnSuccess  bool          `yaml:"reset_on_success"`
+	NotifyOnLockout bool          `yaml:"notify_on_lockout"`
 }
 
 // Load loads configuration from file and environment variables

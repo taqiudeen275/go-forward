@@ -25,12 +25,15 @@ type Service struct {
 	smsService      sms.SMSService
 	securityMonitor *SecurityMonitor
 	customProviders *CustomAuthProviderManager
+	rbac            RBACEngine
+	mfa             MFAService
 }
 
 // NewService creates a new authentication service
 func NewService(db *database.DB) *Service {
 	// Default JWT configuration - should be overridden with actual config
 	jwtManager := NewJWTManager("default-secret-key", 24*time.Hour, 7*24*time.Hour)
+	rbac := NewRBACEngine(db.Pool)
 
 	return &Service{
 		repo:            NewUserRepository(db),
@@ -41,14 +44,17 @@ func NewService(db *database.DB) *Service {
 		smsService:      nil, // Will be set via SetSMSService
 		securityMonitor: NewSecurityMonitor(),
 		customProviders: NewCustomAuthProviderManager(),
+		rbac:            rbac,
+		mfa:             NewMFAService(db.Pool, rbac, "Go Forward"),
 	}
 }
 
 // NewServiceWithConfig creates a new authentication service with custom JWT configuration
 func NewServiceWithConfig(db *database.DB, jwtSecret string, accessExpiration, refreshExpiration time.Duration) *Service {
 	jwtManager := NewJWTManager(jwtSecret, accessExpiration, refreshExpiration)
+	rbac := NewRBACEngine(db.Pool)
 
-	return &Service{
+	service := &Service{
 		repo:            NewUserRepository(db),
 		hasher:          NewPasswordHasher(),
 		validator:       NewValidator(),
@@ -57,7 +63,11 @@ func NewServiceWithConfig(db *database.DB, jwtSecret string, accessExpiration, r
 		smsService:      nil, // Will be set via SetSMSService
 		securityMonitor: NewSecurityMonitor(),
 		customProviders: NewCustomAuthProviderManager(),
+		rbac:            rbac,
+		mfa:             NewMFAService(db.Pool, rbac, "Go Forward"),
 	}
+
+	return service
 }
 
 // SetEmailService sets the email service for the auth service
@@ -1052,4 +1062,316 @@ func (s *Service) AuthenticateWithCustomProvider(ctx context.Context, req *Custo
 		RefreshToken: tokenPair.RefreshToken,
 		ExpiresIn:    int(tokenPair.ExpiresIn),
 	}, nil
+}
+
+// =============================================================================
+// Admin-Specific Methods
+// =============================================================================
+
+// CreateAdminUser creates a new user with admin privileges
+func (s *Service) CreateAdminUser(ctx context.Context, req CreateAdminUserRequest) (*User, error) {
+	// Validate request
+	if err := s.validator.ValidateCreateUserRequest(&CreateUserRequest{
+		Email:    req.Email,
+		Phone:    req.Phone,
+		Username: req.Username,
+		Password: req.Password,
+		Metadata: req.Metadata,
+	}); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Create regular user first
+	userReq := CreateUserRequest{
+		Email:    req.Email,
+		Phone:    req.Phone,
+		Username: req.Username,
+		Password: req.Password,
+		Metadata: req.Metadata,
+	}
+
+	user, err := s.CreateUser(ctx, &userReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Get role ID by name
+	// This is a temporary workaround - we need to implement GetRoleByName in RBAC
+	roleID := "temp-role-id" // TODO: Implement proper role lookup
+
+	// Grant admin role
+	err = s.rbac.GrantRole(ctx, user.ID, roleID, "system")
+	if err != nil {
+		return nil, fmt.Errorf("failed to grant admin role: %w", err)
+	}
+
+	// Setup MFA if requested
+	if req.EnableMFA {
+		_, _, err = s.mfa.GenerateTOTPSecret(ctx, user.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to setup MFA: %w", err)
+		}
+	}
+
+	return user, nil
+}
+
+// PromoteToAdmin promotes an existing user to admin role
+func (s *Service) PromoteToAdmin(ctx context.Context, userID string, roleName string, promotedBy string) error {
+	// Get role ID by name
+	// TODO: Implement proper role lookup through RBAC
+	roleID := "temp-role-id"
+
+	// Grant admin role
+	err := s.rbac.GrantRole(ctx, userID, roleID, promotedBy)
+	if err != nil {
+		return fmt.Errorf("failed to promote user to admin: %w", err)
+	}
+
+	return nil
+}
+
+// GetAdminUsers retrieves admin users with optional filtering
+func (s *Service) GetAdminUsers(ctx context.Context, filter AdminUserFilter) ([]User, error) {
+	query := `
+		SELECT DISTINCT u.id, u.email, u.phone, u.username, u.password_hash,
+			   u.email_verified, u.phone_verified, u.metadata, u.created_at, u.updated_at
+		FROM users u
+		JOIN user_admin_roles uar ON u.id = uar.user_id
+		JOIN admin_roles ar ON uar.role_id = ar.id
+		WHERE uar.is_active = TRUE
+		AND ar.is_active = TRUE
+		AND (uar.expires_at IS NULL OR uar.expires_at > NOW())
+	`
+
+	args := []interface{}{}
+	argIndex := 1
+
+	if filter.RoleName != nil {
+		query += fmt.Sprintf(" AND ar.name = $%d", argIndex)
+		args = append(args, *filter.RoleName)
+		argIndex++
+	}
+
+	if filter.RoleLevel != nil {
+		query += fmt.Sprintf(" AND ar.level = $%d", argIndex)
+		args = append(args, *filter.RoleLevel)
+		argIndex++
+	}
+
+	if filter.IsActive != nil {
+		query += fmt.Sprintf(" AND uar.is_active = $%d", argIndex)
+		args = append(args, *filter.IsActive)
+		argIndex++
+	}
+
+	if filter.EmailVerified != nil {
+		query += fmt.Sprintf(" AND u.email_verified = $%d", argIndex)
+		args = append(args, *filter.EmailVerified)
+		argIndex++
+	}
+
+	// Add MFA filter if specified
+	if filter.MFAEnabled != nil {
+		if *filter.MFAEnabled {
+			query += " AND EXISTS (SELECT 1 FROM user_mfa_settings ums WHERE ums.user_id = u.id AND ums.is_enabled = TRUE)"
+		} else {
+			query += " AND NOT EXISTS (SELECT 1 FROM user_mfa_settings ums WHERE ums.user_id = u.id AND ums.is_enabled = TRUE)"
+		}
+	}
+
+	query += " ORDER BY u.created_at DESC"
+
+	if filter.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", argIndex)
+		args = append(args, filter.Limit)
+		argIndex++
+	}
+
+	if filter.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET $%d", argIndex)
+		args = append(args, filter.Offset)
+		argIndex++
+	}
+
+	// TODO: Implement proper admin user filtering through repository
+	// For now, return empty slice
+	var users []User
+
+	return users, nil
+}
+
+// LoginWithMFA handles login with multi-factor authentication
+func (s *Service) LoginWithMFA(ctx context.Context, req LoginWithMFARequest) (*AuthResponseWithMFA, error) {
+	// Perform regular login first
+	loginReq := LoginRequest{
+		Identifier: req.Identifier,
+		Password:   req.Password,
+	}
+
+	// Use existing login method instead of validateCredentials
+	authResp, err := s.Login(ctx, &loginReq)
+	if err != nil {
+		return nil, err
+	}
+	user := authResp.User
+
+	// Check if MFA is required
+	requiresMFA, err := s.RequiresMFA(ctx, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check MFA requirement: %w", err)
+	}
+
+	if !requiresMFA {
+		// No MFA required, proceed with regular login
+		tokenPair, err := s.jwtManager.GenerateTokenPair(user)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate tokens: %w", err)
+		}
+
+		return &AuthResponseWithMFA{
+			AuthResponse: AuthResponse{
+				User:         user,
+				AccessToken:  tokenPair.AccessToken,
+				RefreshToken: tokenPair.RefreshToken,
+				ExpiresIn:    int(tokenPair.ExpiresIn),
+			},
+			RequiresMFA:      false,
+			MFAEnabled:       false,
+			MFASetupRequired: false,
+		}, nil
+	}
+
+	// Check if device is trusted (if fingerprint provided)
+	if req.DeviceFingerprint != "" {
+		isTrusted, err := s.mfa.IsTrustedDevice(ctx, user.ID, req.DeviceFingerprint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check trusted device: %w", err)
+		}
+
+		if isTrusted {
+			// Trusted device, skip MFA
+			tokenPair, err := s.jwtManager.GenerateTokenPair(user)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate tokens: %w", err)
+			}
+
+			return &AuthResponseWithMFA{
+				AuthResponse: AuthResponse{
+					User:         user,
+					AccessToken:  tokenPair.AccessToken,
+					RefreshToken: tokenPair.RefreshToken,
+					ExpiresIn:    int(tokenPair.ExpiresIn),
+				},
+				RequiresMFA:   false,
+				MFAEnabled:    true,
+				TrustedDevice: true,
+			}, nil
+		}
+	}
+
+	// Verify MFA code
+	valid, err := s.mfa.VerifyTOTP(ctx, user.ID, req.MFACode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify MFA: %w", err)
+	}
+
+	if !valid {
+		// Try backup code
+		valid, err = s.mfa.VerifyBackupCode(ctx, user.ID, req.MFACode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify backup code: %w", err)
+		}
+	}
+
+	if !valid {
+		return nil, fmt.Errorf("invalid MFA code")
+	}
+
+	// Trust device if requested
+	if req.TrustDevice && req.DeviceFingerprint != "" {
+		err = s.mfa.TrustDevice(ctx, user.ID, req.DeviceFingerprint, "Trusted Device", 30*24*time.Hour)
+		if err != nil {
+			// Don't fail login due to trust device error, just log it
+			fmt.Printf("Warning: failed to trust device: %v\n", err)
+		}
+	}
+
+	// Generate JWT tokens
+	tokenPair, err := s.jwtManager.GenerateTokenPair(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	// Get MFA status for response
+	mfaStatus, err := s.mfa.GetMFAStatus(ctx, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get MFA status: %w", err)
+	}
+
+	backupCodesCount := 0
+	if mfaStatus != nil {
+		// Count remaining backup codes (we can't expose the actual codes)
+		// TODO: Implement proper MFA status check
+		count := 0
+		backupCodesCount = count
+	}
+
+	return &AuthResponseWithMFA{
+		AuthResponse: AuthResponse{
+			User:         user,
+			AccessToken:  tokenPair.AccessToken,
+			RefreshToken: tokenPair.RefreshToken,
+			ExpiresIn:    int(tokenPair.ExpiresIn),
+		},
+		RequiresMFA:      true,
+		MFAEnabled:       mfaStatus != nil && mfaStatus.IsEnabled,
+		BackupCodesCount: backupCodesCount,
+		TrustedDevice:    req.TrustDevice,
+	}, nil
+}
+
+// RequiresMFA checks if a user is required to use MFA
+func (s *Service) RequiresMFA(ctx context.Context, userID string) (bool, error) {
+	// Check if user has admin role that requires MFA
+	adminLevel, err := s.rbac.GetUserAdminLevel(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get admin level: %w", err)
+	}
+
+	// System admins and super admins require MFA
+	if adminLevel <= 2 {
+		return true, nil
+	}
+
+	// Check if MFA is explicitly enforced for this user
+	// TODO: Implement through MFA service
+	isEnforced := false
+
+	return isEnforced, nil
+}
+
+// GetUserWithAdminRoles retrieves a user with their admin roles
+func (s *Service) GetUserWithAdminRoles(ctx context.Context, userID string) (*User, []UserAdminRole, error) {
+	user, err := s.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	roles, err := s.rbac.GetUserRoles(ctx, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get user roles: %w", err)
+	}
+
+	return user, roles, nil
+}
+
+// RBACEngine returns the RBAC engine instance
+func (s *Service) RBACEngine() RBACEngine {
+	return s.rbac
+}
+
+// MFAService returns the MFA service instance
+func (s *Service) MFAService() MFAService {
+	return s.mfa
 }

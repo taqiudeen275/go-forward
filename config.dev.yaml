@@ -1,0 +1,107 @@
+# Go Forward Development Configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+  log_level: "debug"
+  cors:
+    enabled: true
+    allowed_origins:
+      - "*"
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "OPTIONS"
+    allowed_headers:
+      - "*"
+    credentials: true
+  rate_limit:
+    enabled: true
+    requests_per_second: 100
+    burst: 200
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "goforward_dev"
+  user: "postgres"
+  password: "postgres"
+  ssl_mode: "disable"
+  max_connections: 25
+  max_idle_connections: 5
+  max_lifetime: 1h
+
+auth:
+  jwt_secret: "development-jwt-secret-key-must-be-32-chars-or-longer-for-security"
+  jwt_expiration: 24h
+  refresh_expiration: 168h # 7 days
+  otp_expiration: 10m
+  password_min_length: 8
+  enable_email_auth: true
+  enable_phone_auth: false
+  enable_username_auth: true
+  require_verification: false
+  smtp:
+    host: ""
+    port: 587
+    username: ""
+    password: ""
+    from_email: "noreply@goforward.dev"
+    from_name: "Go Forward"
+    use_tls: true
+  sms:
+    provider: "twilio"
+    twilio:
+      account_sid: ""
+      auth_token: ""
+      from_number: ""
+  custom_providers:
+    enabled: false
+
+storage:
+  provider: "local"
+  local_path: "./uploads"
+  max_file_size: 10485760 # 10MB
+  s3:
+    region: ""
+    bucket: ""
+    access_key_id: ""
+    secret_access_key: ""
+    endpoint: ""
+
+realtime:
+  enabled: false
+  max_connections: 1000
+  heartbeat_interval: 30s
+  read_buffer_size: 1024
+  write_buffer_size: 1024
+  redis:
+    host: "localhost"
+    port: 6379
+    password: ""
+    db: 0
+    pool_size: 10
+    min_idle_conns: 3
+
+dashboard:
+  enabled: true
+  path: "/dashboard"
+  static_dir: "./dashboard/dist"
+
+logging:
+  level: "debug"
+  format: "text"
+  output: "stdout"
+  file_path: ""
+  max_size: 100
+  max_backups: 3
+  max_age: 28
+  compress: true
+
+plugins:
+  enabled: false
+  directory: "./plugins"
+  auto_load: false
